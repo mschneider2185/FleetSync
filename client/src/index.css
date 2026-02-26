@@ -277,6 +277,26 @@
     background-color: var(--elevate-2);
   }
 
+  .gantt-scroll::-webkit-scrollbar {
+    height: 12px;
+  }
+  .gantt-scroll::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 6px;
+  }
+  .gantt-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 6px;
+    border: 2px solid hsl(var(--muted));
+  }
+  .gantt-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+  .gantt-scroll {
+    scrollbar-width: auto;
+    scrollbar-color: hsl(var(--border)) hsl(var(--muted));
+  }
+
   /* If there's a 1px border, adjust the inset so that it covers that parent's border */
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,

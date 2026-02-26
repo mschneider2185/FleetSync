@@ -247,7 +247,7 @@ export function GanttChart({
       </div>
 
       <div
-        className="flex-1 overflow-auto relative"
+        className="flex-1 overflow-auto relative gantt-scroll"
         ref={scrollRef}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

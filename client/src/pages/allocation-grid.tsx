@@ -24,7 +24,11 @@ interface EditingCell {
   originalValue: number;
 }
 
-export default function AllocationGrid() {
+interface AllocationGridContentProps {
+  compact?: boolean;
+}
+
+export function AllocationGridContent({ compact = false }: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
   const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
@@ -278,10 +282,14 @@ export default function AllocationGrid() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b bg-background shrink-0">
+      <div className={`flex items-center justify-between gap-4 px-4 ${compact ? "py-1.5" : "py-3"} border-b bg-background shrink-0`}>
         <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="text-lg font-semibold tracking-tight" data-testid="heading-allocation-grid">Allocation Grid</h1>
-          <ScenarioSelector />
+          {!compact && (
+            <>
+              <h1 className="text-lg font-semibold tracking-tight" data-testid="heading-allocation-grid">Allocation Grid</h1>
+              <ScenarioSelector />
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setStartDate(d => addDays(d, -7))} data-testid="button-grid-prev">
@@ -549,4 +557,8 @@ export default function AllocationGrid() {
       />
     </div>
   );
+}
+
+export default function AllocationGrid() {
+  return <AllocationGridContent />;
 }

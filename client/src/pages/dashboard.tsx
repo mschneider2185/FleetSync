@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, Truck, Users } from "lucide-react";
+import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, ChevronUp, Truck, Users, Grid3X3 } from "lucide-react";
+import { AllocationGridContent } from "@/pages/allocation-grid";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -207,6 +208,8 @@ export default function Dashboard() {
   const [laneDialogOpen, setLaneDialogOpen] = useState(false);
   const [editLane, setEditLane] = useState<Lane | null>(null);
   const [conflictSheetOpen, setConflictSheetOpen] = useState(false);
+  const [ganttCollapsed, setGanttCollapsed] = useState(false);
+  const [gridCollapsed, setGridCollapsed] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [newJobForSchedule, setNewJobForSchedule] = useState<FracJob | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -385,19 +388,49 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-hidden">
-          <GanttChart
-            lanes={lanes}
-            fracJobs={fracJobs}
-            schedules={schedules}
-            conflicts={conflicts}
-            isLocked={isLocked}
-            onScheduleUpdate={(id, start, end) => updateScheduleMutation.mutate({ id, startDate: start, endDate: end })}
-            onFracClick={(fracId) => {
-              setSelectedFracId(fracId);
-              setDetailOpen(true);
-            }}
-          />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className={`flex flex-col ${ganttCollapsed ? "" : gridCollapsed ? "flex-1" : "flex-1 basis-1/2"} overflow-hidden`}>
+            <button
+              onClick={() => setGanttCollapsed(!ganttCollapsed)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
+              data-testid="toggle-gantt-section"
+            >
+              {ganttCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              Gantt Schedule
+            </button>
+            {!ganttCollapsed && (
+              <div className="flex-1 overflow-hidden">
+                <GanttChart
+                  lanes={lanes}
+                  fracJobs={fracJobs}
+                  schedules={schedules}
+                  conflicts={conflicts}
+                  isLocked={isLocked}
+                  onScheduleUpdate={(id, start, end) => updateScheduleMutation.mutate({ id, startDate: start, endDate: end })}
+                  onFracClick={(fracId) => {
+                    setSelectedFracId(fracId);
+                    setDetailOpen(true);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className={`flex flex-col ${gridCollapsed ? "" : ganttCollapsed ? "flex-1" : "flex-1 basis-1/2"} overflow-hidden`}>
+            <button
+              onClick={() => setGridCollapsed(!gridCollapsed)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b border-t text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
+              data-testid="toggle-grid-section"
+            >
+              {gridCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              Allocation Grid
+            </button>
+            {!gridCollapsed && (
+              <div className="flex-1 overflow-hidden">
+                <AllocationGridContent compact />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
