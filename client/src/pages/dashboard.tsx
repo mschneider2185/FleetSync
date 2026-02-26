@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { startOfDay, parseISO } from "date-fns";
 import { GanttChart } from "@/components/gantt-chart";
 import { FracDetailPanel } from "@/components/frac-detail-panel";
@@ -213,6 +213,34 @@ export default function Dashboard() {
   const [gridCollapsed, setGridCollapsed] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [viewDate, setViewDate] = useState<string | null>(null);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const isDraggingSplit = useRef(false);
+
+  const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingSplit.current = true;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingSplit.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const pct = ((e.clientY - rect.top) / rect.height) * 100;
+      setSplitPercent(Math.min(80, Math.max(20, pct)));
+    };
+
+    const onMouseUp = () => {
+      isDraggingSplit.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [newJobForSchedule, setNewJobForSchedule] = useState<FracJob | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -397,8 +425,15 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className={`flex flex-col min-h-0 shrink-0 ${!ganttCollapsed ? (gridCollapsed ? "flex-1" : "flex-1 basis-1/2") : ""}`}>
+        <div ref={splitContainerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div
+            className="flex flex-col min-h-0 shrink-0 overflow-hidden"
+            style={{
+              height: ganttCollapsed ? "auto" :
+                gridCollapsed ? "100%" :
+                `${splitPercent}%`
+            }}
+          >
             <button
               onClick={() => setGanttCollapsed(!ganttCollapsed)}
               className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
@@ -428,10 +463,28 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className={`flex flex-col min-h-0 shrink-0 ${!gridCollapsed ? (ganttCollapsed ? "flex-1" : "flex-1 basis-1/2") : ""}`}>
+          {!ganttCollapsed && !gridCollapsed && (
+            <div
+              className="shrink-0 flex items-center justify-center cursor-row-resize group border-y border-border hover:bg-primary/5 transition-colors"
+              style={{ height: 6 }}
+              onMouseDown={handleSplitMouseDown}
+              data-testid="split-handle"
+            >
+              <div className="w-12 h-1 rounded-full bg-border group-hover:bg-primary/40 transition-colors" />
+            </div>
+          )}
+
+          <div
+            className="flex flex-col min-h-0 shrink-0 overflow-hidden"
+            style={{
+              height: gridCollapsed ? "auto" :
+                ganttCollapsed ? "100%" :
+                `calc(${100 - splitPercent}% - 6px)`
+            }}
+          >
             <button
               onClick={() => setGridCollapsed(!gridCollapsed)}
-              className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b border-t text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
+              className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
               data-testid="toggle-grid-section"
             >
               {gridCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}

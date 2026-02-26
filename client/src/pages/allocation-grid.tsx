@@ -12,9 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 
-const DAYS_VISIBLE = 21;
 const COL_WIDTH = 56;
 const LABEL_WIDTH = 220;
+const DEFAULT_DAYS_VISIBLE = 21;
 
 interface EditingCell {
   fracJobId: number;
@@ -36,6 +36,26 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   const [internalStartDate, setInternalStartDate] = useState(() => startOfDay(new Date()));
   const startDate = externalStartDate || internalStartDate;
   const setStartDate = externalStartDate ? () => {} : setInternalStartDate;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const daysVisible = useMemo(() => {
+    if (containerWidth <= 0) return DEFAULT_DAYS_VISIBLE;
+    return Math.max(7, Math.floor((containerWidth - LABEL_WIDTH) / COL_WIDTH));
+  }, [containerWidth]);
+
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -69,8 +89,8 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   });
 
   const dates = useMemo(() =>
-    Array.from({ length: DAYS_VISIBLE }, (_, i) => addDays(startDate, i)),
-    [startDate]
+    Array.from({ length: daysVisible }, (_, i) => addDays(startDate, i)),
+    [startDate, daysVisible]
   );
   const dateStrings = useMemo(() => dates.map(d => format(d, "yyyy-MM-dd")), [dates]);
 
@@ -79,10 +99,10 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   const laneMap = useMemo(() => new Map(lanes.map(l => [l.id, l])), [lanes]);
 
   const activeSchedules = useMemo(() => {
-    const endDateStr = format(addDays(startDate, DAYS_VISIBLE), "yyyy-MM-dd");
+    const endDateStr = format(addDays(startDate, daysVisible), "yyyy-MM-dd");
     const startDateStr = format(startDate, "yyyy-MM-dd");
     return schedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
-  }, [schedules, startDate]);
+  }, [schedules, startDate, daysVisible]);
 
   const getAllocForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
     return allocations.find(a =>
@@ -282,10 +302,10 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
     return map;
   }, [activeSchedules, allocations]);
 
-  const tableWidth = LABEL_WIDTH + DAYS_VISIBLE * COL_WIDTH;
+  const tableWidth = LABEL_WIDTH + daysVisible * COL_WIDTH;
 
   return (
-    <div className="flex flex-col h-full">
+    <div ref={containerRef} className="flex flex-col h-full">
       <div className={`flex items-center justify-between gap-4 px-4 ${compact ? "py-1.5" : "py-3"} border-b bg-background shrink-0`}>
         <div className="flex items-center gap-4 flex-wrap">
           {!compact && (

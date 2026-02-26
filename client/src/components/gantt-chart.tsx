@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useMemo } from "react";
+import { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import { format, addDays, differenceInDays, parseISO, startOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -76,6 +76,14 @@ export function GanttChart({
 
   const today = startOfDay(new Date());
   const todayOffset = differenceInDays(today, dateRange.start);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
+      }
+    });
+  }, [zoomLevel, dayWidth, todayOffset]);
 
   const dates = useMemo(() => {
     return Array.from({ length: dateRange.days }, (_, i) => addDays(dateRange.start, i));
@@ -241,7 +249,9 @@ export function GanttChart({
             {(Object.entries(ZOOM_CONFIG) as [ZoomLevel, typeof ZOOM_CONFIG[ZoomLevel]][]).map(([level, config]) => (
               <button
                 key={level}
-                onClick={() => setZoomLevel(level)}
+                onClick={() => {
+                  setZoomLevel(level);
+                }}
                 className={`px-2.5 py-1 text-xs font-medium transition-colors ${
                   zoomLevel === level
                     ? "bg-primary text-primary-foreground"
