@@ -1,8 +1,8 @@
 import { useRef, useState, useCallback, useMemo } from "react";
-import { format, addDays, differenceInDays, parseISO, startOfDay } from "date-fns";
+import { format, addDays, differenceInDays, parseISO, startOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Lane, FracJob, ScenarioFracSchedule } from "@shared/schema";
 
@@ -24,7 +24,15 @@ interface GanttChartProps {
   isLocked?: boolean;
 }
 
-const DAY_WIDTH = 48;
+type ZoomLevel = "week" | "month" | "quarter" | "year";
+
+const ZOOM_CONFIG: Record<ZoomLevel, { dayWidth: number; label: string }> = {
+  week: { dayWidth: 80, label: "Week" },
+  month: { dayWidth: 48, label: "Month" },
+  quarter: { dayWidth: 16, label: "Quarter" },
+  year: { dayWidth: 4, label: "Year" },
+};
+
 const LANE_HEADER_WIDTH = 160;
 const ROW_HEIGHT = 56;
 const HEADER_HEIGHT = 52;
@@ -46,6 +54,8 @@ export function GanttChart({
   isLocked,
 }: GanttChartProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("month");
+  const dayWidth = ZOOM_CONFIG[zoomLevel].dayWidth;
 
   const dateRange = useMemo(() => {
     if (schedules.length === 0) {
@@ -103,9 +113,9 @@ export function GanttChart({
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragState) return;
     const dx = e.clientX - dragState.startX;
-    const deltaDays = Math.round(dx / DAY_WIDTH);
+    const deltaDays = Math.round(dx / dayWidth);
     setDragState(prev => prev ? { ...prev, deltaDays } : null);
-  }, [dragState]);
+  }, [dragState, dayWidth]);
 
   const handleMouseUp = useCallback(() => {
     if (!dragState || dragState.deltaDays === 0) {
@@ -119,12 +129,12 @@ export function GanttChart({
   }, [dragState, onScheduleUpdate]);
 
   const scrollBy = (days: number) => {
-    scrollRef.current?.scrollBy({ left: days * DAY_WIDTH, behavior: "smooth" });
+    scrollRef.current?.scrollBy({ left: days * dayWidth, behavior: "smooth" });
   };
 
   const scrollToToday = () => {
     if (scrollRef.current) {
-      scrollRef.current.scrollLeft = todayOffset * DAY_WIDTH - scrollRef.current.clientWidth / 2;
+      scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
     }
   };
 
@@ -153,19 +163,75 @@ export function GanttChart({
     return result;
   };
 
+  const showDayLabels = zoomLevel === "week" || zoomLevel === "month";
+
+  const monthHeaders = useMemo(() => {
+    if (showDayLabels) return [];
+    const months: { label: string; startIdx: number; span: number }[] = [];
+    let currentMonth = -1;
+    let currentYear = -1;
+    let currentStart = 0;
+
+    dates.forEach((date, i) => {
+      const m = date.getMonth();
+      const y = date.getFullYear();
+      if (m !== currentMonth || y !== currentYear) {
+        if (currentMonth !== -1) {
+          months.push({
+            label: format(new Date(currentYear, currentMonth, 1), "MMM yyyy"),
+            startIdx: currentStart,
+            span: i - currentStart,
+          });
+        }
+        currentMonth = m;
+        currentYear = y;
+        currentStart = i;
+      }
+    });
+    if (currentMonth !== -1) {
+      months.push({
+        label: format(new Date(currentYear, currentMonth, 1), "MMM yyyy"),
+        startIdx: currentStart,
+        span: dates.length - currentStart,
+      });
+    }
+    return months;
+  }, [dates, showDayLabels]);
+
+  const scrollStepDays = zoomLevel === "week" ? 7 : zoomLevel === "month" ? 14 : zoomLevel === "quarter" ? 30 : 90;
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-card/50">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => scrollBy(-7)} data-testid="button-gantt-scroll-left">
+          <Button variant="outline" size="sm" onClick={() => scrollBy(-scrollStepDays)} data-testid="button-gantt-scroll-left">
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={scrollToToday} data-testid="button-gantt-today">
             Today
           </Button>
-          <Button variant="outline" size="sm" onClick={() => scrollBy(7)} data-testid="button-gantt-scroll-right">
+          <Button variant="outline" size="sm" onClick={() => scrollBy(scrollStepDays)} data-testid="button-gantt-scroll-right">
             <ChevronRight className="w-4 h-4" />
           </Button>
+
+          <div className="h-5 w-px bg-border mx-1" />
+
+          <div className="flex items-center rounded-md border bg-background" data-testid="gantt-zoom-controls">
+            {(Object.entries(ZOOM_CONFIG) as [ZoomLevel, typeof ZOOM_CONFIG[ZoomLevel]][]).map(([level, config]) => (
+              <button
+                key={level}
+                onClick={() => setZoomLevel(level)}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                  zoomLevel === level
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                } ${level === "week" ? "rounded-l-md" : ""} ${level === "year" ? "rounded-r-md" : ""}`}
+                data-testid={`button-zoom-${level}`}
+              >
+                {config.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
@@ -190,7 +256,7 @@ export function GanttChart({
         <div
           className="relative"
           style={{
-            width: LANE_HEADER_WIDTH + dateRange.days * DAY_WIDTH,
+            width: LANE_HEADER_WIDTH + dateRange.days * dayWidth,
             minHeight: (lanes.length || 1) * ROW_HEIGHT + HEADER_HEIGHT,
           }}
         >
@@ -204,30 +270,47 @@ export function GanttChart({
             >
               Lanes
             </div>
-            <div className="flex">
-              {dates.map((date, i) => {
-                const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                const isMonthStart = date.getDate() === 1;
-                return (
+
+            {showDayLabels ? (
+              <div className="flex">
+                {dates.map((date, i) => {
+                  const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const isMonthStart = date.getDate() === 1;
+                  return (
+                    <div
+                      key={i}
+                      className={`flex flex-col items-center justify-end pb-1 border-r text-[10px] ${
+                        isToday ? "bg-primary/5 font-semibold text-primary" :
+                        isWeekend ? "bg-muted/30 text-muted-foreground" :
+                        "text-muted-foreground"
+                      } ${isMonthStart ? "border-l-2 border-l-border" : ""}`}
+                      style={{ width: dayWidth, minWidth: dayWidth }}
+                    >
+                      {(i === 0 || isMonthStart) && (
+                        <span className="text-[9px] font-medium mb-0.5">{format(date, "MMM yyyy")}</span>
+                      )}
+                      <span>{format(date, "d")}</span>
+                      {zoomLevel === "week" && (
+                        <span className="text-[9px]">{format(date, "EEE")}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-end relative">
+                {monthHeaders.map((mh, i) => (
                   <div
                     key={i}
-                    className={`flex flex-col items-center justify-end pb-1 border-r text-[10px] ${
-                      isToday ? "bg-primary/5 font-semibold text-primary" :
-                      isWeekend ? "bg-muted/30 text-muted-foreground" :
-                      "text-muted-foreground"
-                    } ${isMonthStart ? "border-l-2 border-l-border" : ""}`}
-                    style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                    className="flex items-end justify-center pb-2 border-r text-[10px] font-medium text-muted-foreground"
+                    style={{ width: mh.span * dayWidth, minWidth: mh.span * dayWidth }}
                   >
-                    {(i === 0 || isMonthStart) && (
-                      <span className="text-[9px] font-medium mb-0.5">{format(date, "MMM yyyy")}</span>
-                    )}
-                    <span>{format(date, "d")}</span>
-                    <span className="text-[9px]">{format(date, "EEE")}</span>
+                    <span className="truncate px-1">{mh.label}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {lanes.map((lane, laneIdx) => {
@@ -249,22 +332,30 @@ export function GanttChart({
                   <span className="text-sm font-medium truncate" data-testid={`text-lane-${lane.id}`}>{lane.name}</span>
                 </div>
 
-                <div className="relative flex-1" style={{ width: dateRange.days * DAY_WIDTH }}>
-                  {dates.map((date, i) => {
+                <div className="relative flex-1" style={{ width: dateRange.days * dayWidth }}>
+                  {showDayLabels && dates.map((date, i) => {
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     return (
                       <div
                         key={i}
                         className={`absolute top-0 bottom-0 border-r ${isWeekend ? "bg-muted/20" : ""}`}
-                        style={{ left: i * DAY_WIDTH, width: DAY_WIDTH }}
+                        style={{ left: i * dayWidth, width: dayWidth }}
                       />
                     );
                   })}
 
+                  {!showDayLabels && monthHeaders.map((mh, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 bottom-0 border-r border-border/30"
+                      style={{ left: (mh.startIdx + mh.span) * dayWidth, width: 0 }}
+                    />
+                  ))}
+
                   {todayOffset >= 0 && todayOffset < dateRange.days && (
                     <div
                       className="absolute top-0 bottom-0 w-0.5 bg-primary z-10"
-                      style={{ left: todayOffset * DAY_WIDTH + DAY_WIDTH / 2 }}
+                      style={{ left: todayOffset * dayWidth + dayWidth / 2 }}
                     />
                   )}
 
@@ -277,8 +368,10 @@ export function GanttChart({
                     const barConflicts = getBarConflicts(schedule);
                     const isDragging = dragState?.scheduleId === schedule.id;
                     const dragOffset = isDragging ? dragState.deltaDays : 0;
-                    const left = (startOffset + dragOffset) * DAY_WIDTH + 2;
-                    const width = duration * DAY_WIDTH - 4;
+                    const left = (startOffset + dragOffset) * dayWidth + 2;
+                    const width = duration * dayWidth - 4;
+                    const showBarText = width > 60;
+                    const showTruckCount = width > 40;
 
                     return (
                       <Tooltip key={schedule.id}>
@@ -289,20 +382,25 @@ export function GanttChart({
                             } ${STATUS_STYLES[schedule.status] || ""}`}
                             style={{
                               left,
-                              width: Math.max(width, 40),
+                              width: Math.max(width, dayWidth > 10 ? 40 : 8),
                               height: ROW_HEIGHT - 16,
                               backgroundColor: lane.color + "22",
                               borderLeft: `3px solid ${lane.color}`,
+                              overflow: "hidden",
                             }}
                             onMouseDown={(e) => handleMouseDown(e, schedule)}
                             onClick={() => onFracClick?.(schedule.fracJobId)}
                             data-testid={`bar-frac-${schedule.fracJobId}`}
                           >
-                            <span className="text-xs font-medium truncate">{frac.padName}</span>
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {schedule.requiredTrucksPerShift}t
-                            </span>
-                            {barConflicts.length > 0 && (
+                            {showBarText && (
+                              <span className="text-xs font-medium truncate">{frac.padName}</span>
+                            )}
+                            {showTruckCount && (
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {schedule.requiredTrucksPerShift}t
+                              </span>
+                            )}
+                            {showBarText && barConflicts.length > 0 && (
                               <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
                             )}
                           </div>

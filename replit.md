@@ -21,9 +21,9 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - **AllocationBlocks**: Hauler-to-frac truck assignments by date range and scenario
 
 ## Key Features (MVP)
-- Interactive Gantt chart with drag-and-drop frac scheduling by lane
+- Interactive Gantt chart with drag-and-drop frac scheduling by lane and zoom controls (Week/Month/Quarter/Year)
 - Daily allocation grid (Excel-like) with proper column alignment, sticky headers, and inline cell editing
-- Inline cell editing in allocation grid: click any cell to edit truck count, with automatic block splitting for multi-day allocations
+- Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
 - Scenario management (Baseline/Forecast/Sandbox) with clone and compare
 - Frac job builder with sand plan details (including configurable load+unload time)
 - Hauler management with capacity tracking

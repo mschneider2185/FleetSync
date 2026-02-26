@@ -33,6 +33,7 @@ export default function AllocationGrid() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const isSavingRef = useRef(false);
 
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -107,14 +108,16 @@ export default function AllocationGrid() {
 
   const today = format(new Date(), "yyyy-MM-dd");
 
+  const refreshAllocations = async () => {
+    await queryClient.refetchQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
+  };
+
   const updateAllocMutation = useMutation({
     mutationFn: async ({ allocId, trucksPerShift }: { allocId: number; trucksPerShift: number }) => {
       return apiRequest("PATCH", `/api/allocations/${allocId}`, { trucksPerShift });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
-    },
+    onSettled: refreshAllocations,
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Failed to update allocation", variant: "destructive" });
     },
@@ -124,10 +127,7 @@ export default function AllocationGrid() {
     mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number }) => {
       return apiRequest("POST", "/api/allocations", payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
-    },
+    onSettled: refreshAllocations,
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Failed to create allocation", variant: "destructive" });
     },
@@ -137,32 +137,11 @@ export default function AllocationGrid() {
     mutationFn: async (allocId: number) => {
       return apiRequest("DELETE", `/api/allocations/${allocId}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
-    },
+    onSettled: refreshAllocations,
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Failed to delete allocation", variant: "destructive" });
     },
   });
-
-  const startEditing = (fracJobId: number, haulerId: number, dateStr: string) => {
-    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
-    const currentValue = alloc ? alloc.trucksPerShift : 0;
-    setEditingCell({
-      fracJobId,
-      haulerId,
-      dateStr,
-      allocId: alloc?.id || null,
-      originalValue: currentValue,
-    });
-    setEditValue(currentValue > 0 ? currentValue.toString() : "");
-  };
-
-  const cancelEditing = () => {
-    setEditingCell(null);
-    setEditValue("");
-  };
 
   const splitAndEditMutation = useMutation({
     mutationFn: async ({ alloc, dateStr, newValue }: { alloc: AllocationBlock; dateStr: string; newValue: number }) => {
@@ -204,51 +183,83 @@ export default function AllocationGrid() {
         });
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
-    },
+    onSettled: refreshAllocations,
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Failed to update allocation", variant: "destructive" });
     },
   });
 
-  const saveEdit = () => {
-    if (!editingCell || !activeScenarioId) return;
-    const newValue = parseInt(editValue) || 0;
+  const startEditing = (fracJobId: number, haulerId: number, dateStr: string) => {
+    if (isSavingRef.current) return;
+    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
+    const currentValue = alloc ? alloc.trucksPerShift : 0;
+    setEditingCell({
+      fracJobId,
+      haulerId,
+      dateStr,
+      allocId: alloc?.id || null,
+      originalValue: currentValue,
+    });
+    setEditValue(currentValue > 0 ? currentValue.toString() : "");
+  };
 
-    if (newValue === editingCell.originalValue) {
-      cancelEditing();
+  const cancelEditing = () => {
+    setEditingCell(null);
+    setEditValue("");
+  };
+
+  const commitEdit = useCallback(() => {
+    if (isSavingRef.current || !editingCell || !activeScenarioId) return;
+    isSavingRef.current = true;
+
+    const newValue = parseInt(editValue) || 0;
+    const cell = editingCell;
+
+    setEditingCell(null);
+    setEditValue("");
+
+    const resetGuard = () => { isSavingRef.current = false; };
+
+    if (newValue === cell.originalValue) {
+      resetGuard();
       return;
     }
 
-    if (editingCell.allocId) {
-      const alloc = allocations.find(a => a.id === editingCell.allocId);
-      if (alloc && (alloc.startDate < editingCell.dateStr || alloc.endDate > editingCell.dateStr)) {
-        splitAndEditMutation.mutate({ alloc, dateStr: editingCell.dateStr, newValue });
-      } else if (newValue === 0) {
-        deleteAllocMutation.mutate(editingCell.allocId);
+    try {
+      if (cell.allocId) {
+        const alloc = allocations.find(a => a.id === cell.allocId);
+        if (alloc && (alloc.startDate < cell.dateStr || alloc.endDate > cell.dateStr)) {
+          splitAndEditMutation.mutate({ alloc, dateStr: cell.dateStr, newValue }, { onSettled: resetGuard });
+        } else if (newValue === 0) {
+          deleteAllocMutation.mutate(cell.allocId, { onSettled: resetGuard });
+        } else {
+          updateAllocMutation.mutate({ allocId: cell.allocId, trucksPerShift: newValue }, { onSettled: resetGuard });
+        }
+      } else if (newValue > 0) {
+        createAllocMutation.mutate({
+          fracJobId: cell.fracJobId,
+          haulerId: cell.haulerId,
+          startDate: cell.dateStr,
+          endDate: cell.dateStr,
+          trucksPerShift: newValue,
+          scenarioId: activeScenarioId,
+        }, { onSettled: resetGuard });
       } else {
-        updateAllocMutation.mutate({ allocId: editingCell.allocId, trucksPerShift: newValue });
+        resetGuard();
       }
-    } else if (newValue > 0) {
-      createAllocMutation.mutate({
-        fracJobId: editingCell.fracJobId,
-        haulerId: editingCell.haulerId,
-        startDate: editingCell.dateStr,
-        endDate: editingCell.dateStr,
-        trucksPerShift: newValue,
-        scenarioId: activeScenarioId,
-      });
+    } catch {
+      resetGuard();
     }
-
-    cancelEditing();
-  };
+  }, [editingCell, editValue, activeScenarioId, allocations, splitAndEditMutation, deleteAllocMutation, updateAllocMutation, createAllocMutation]);
 
   useEffect(() => {
     if (editingCell && editInputRef.current) {
-      editInputRef.current.focus();
-      editInputRef.current.select();
+      requestAnimationFrame(() => {
+        if (editInputRef.current) {
+          editInputRef.current.focus();
+          editInputRef.current.select();
+        }
+      });
     }
   }, [editingCell]);
 
@@ -448,20 +459,29 @@ export default function AllocationGrid() {
                               >
                                 <input
                                   ref={editInputRef}
-                                  type="number"
-                                  min={0}
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
                                   value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9]/g, "");
+                                    setEditValue(val);
+                                  }}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") saveEdit();
-                                    if (e.key === "Escape") cancelEditing();
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      commitEdit();
+                                    }
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      cancelEditing();
+                                    }
                                     if (e.key === "Tab") {
                                       e.preventDefault();
-                                      saveEdit();
+                                      commitEdit();
                                     }
                                   }}
-                                  onBlur={saveEdit}
-                                  className="w-full h-full text-center text-xs bg-primary/10 border-2 border-primary outline-none py-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  onBlur={cancelEditing}
+                                  className="w-full h-full text-center text-xs bg-primary/10 border-2 border-primary outline-none py-1"
                                   style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                                   data-testid={`input-cell-edit-${schedule.fracJobId}-${haulerId}-${ds}`}
                                 />
