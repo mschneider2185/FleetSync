@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, AlertTriangle, Pencil, Trash2, Route } from "lucide-react";
+import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, Truck, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -33,6 +33,170 @@ interface Conflict {
   detail: string;
 }
 
+function formatDate(dateStr: string) {
+  const [y, m, d] = dateStr.split("-");
+  return `${parseInt(m)}/${parseInt(d)}`;
+}
+
+const CONFLICT_LABELS: Record<string, { label: string; color: string }> = {
+  frac_under_supplied: { label: "Under-Supplied Fracs", color: "text-red-600 dark:text-red-400" },
+  hauler_over_capacity: { label: "Hauler Over-Capacity", color: "text-red-600 dark:text-red-400" },
+  frac_zero_buffer: { label: "Zero Buffer (Exact Match)", color: "text-amber-600 dark:text-amber-400" },
+  frac_over_supplied: { label: "Over-Supplied Fracs", color: "text-amber-600 dark:text-amber-400" },
+  hauler_split_warning: { label: "Hauler Split Warnings", color: "text-amber-600 dark:text-amber-400" },
+};
+
+function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  hardConflicts: Conflict[];
+  warnings: Conflict[];
+}) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    frac_under_supplied: true,
+    hauler_over_capacity: true,
+  });
+
+  const toggleSection = (type: string) => {
+    setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }));
+  };
+
+  const groupByType = (items: Conflict[]) => {
+    const groups: Record<string, Conflict[]> = {};
+    for (const c of items) {
+      if (!groups[c.type]) groups[c.type] = [];
+      groups[c.type].push(c);
+    }
+    return groups;
+  };
+
+  const groupByEntity = (items: Conflict[]) => {
+    const groups: Record<string, { entityName: string; dates: { date: string; detail: string }[] }> = {};
+    for (const c of items) {
+      const key = `${c.entityId}`;
+      if (!groups[key]) groups[key] = { entityName: c.entityName, dates: [] };
+      groups[key].dates.push({ date: c.date, detail: c.detail });
+    }
+    for (const g of Object.values(groups)) {
+      g.dates.sort((a, b) => a.date.localeCompare(b.date));
+    }
+    return Object.values(groups);
+  };
+
+  const collapseRanges = (dates: { date: string; detail: string }[]) => {
+    if (dates.length === 0) return [];
+    const ranges: { startDate: string; endDate: string; detail: string; count: number }[] = [];
+    let current = { startDate: dates[0].date, endDate: dates[0].date, detail: dates[0].detail, count: 1 };
+
+    for (let i = 1; i < dates.length; i++) {
+      const prevDate = new Date(current.endDate);
+      prevDate.setDate(prevDate.getDate() + 1);
+      const nextDay = prevDate.toISOString().split("T")[0];
+
+      if (dates[i].date === nextDay && dates[i].detail === current.detail) {
+        current.endDate = dates[i].date;
+        current.count++;
+      } else {
+        ranges.push(current);
+        current = { startDate: dates[i].date, endDate: dates[i].date, detail: dates[i].detail, count: 1 };
+      }
+    }
+    ranges.push(current);
+    return ranges;
+  };
+
+  const hardGroups = groupByType(hardConflicts);
+  const warnGroups = groupByType(warnings);
+  const allGroups = { ...hardGroups, ...warnGroups };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[420px] sm:max-w-[420px] overflow-y-auto" data-testid="conflict-sheet">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            Issues & Warnings
+          </SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-1">
+          {hardConflicts.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              <Badge variant="destructive" className="gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {hardConflicts.length} issue(s)
+              </Badge>
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              <Badge variant="secondary">
+                {warnings.length} warning(s)
+              </Badge>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 space-y-2">
+          {Object.entries(allGroups).map(([type, items]) => {
+            const config = CONFLICT_LABELS[type] || { label: type, color: "text-foreground" };
+            const isExpanded = expandedSections[type] ?? false;
+            const entities = groupByEntity(items);
+            const isHard = type === "frac_under_supplied" || type === "hauler_over_capacity";
+
+            return (
+              <div key={type} className="border rounded-lg overflow-hidden" data-testid={`conflict-group-${type}`}>
+                <button
+                  onClick={() => toggleSection(type)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
+                  data-testid={`toggle-conflict-${type}`}
+                >
+                  <span className={`flex items-center gap-2 ${config.color}`}>
+                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    {isHard && <AlertTriangle className="w-3.5 h-3.5" />}
+                    {config.label}
+                  </span>
+                  <Badge variant={isHard ? "destructive" : "secondary"} className="text-xs">
+                    {items.length}
+                  </Badge>
+                </button>
+                {isExpanded && (
+                  <div className="border-t divide-y">
+                    {entities.map((entity, i) => (
+                      <div key={i} className="px-3 py-2" data-testid={`conflict-entity-${type}-${i}`}>
+                        <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                          {type.startsWith("hauler") ? <Users className="w-3 h-3 text-muted-foreground" /> : <Truck className="w-3 h-3 text-muted-foreground" />}
+                          {entity.entityName}
+                        </div>
+                        <div className="space-y-0.5">
+                          {collapseRanges(entity.dates).map((r, j) => (
+                            <div key={j} className="text-xs text-muted-foreground flex items-start gap-2">
+                              <span className="font-mono shrink-0 w-24">
+                                {r.startDate === r.endDate
+                                  ? formatDate(r.startDate)
+                                  : `${formatDate(r.startDate)} - ${formatDate(r.endDate)}`}
+                                {r.count > 1 && <span className="text-muted-foreground/60"> ({r.count}d)</span>}
+                              </span>
+                              <span>{r.detail}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {hardConflicts.length === 0 && warnings.length === 0 && (
+            <div className="text-center text-sm text-muted-foreground py-8">
+              No issues or warnings found
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function Dashboard() {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
@@ -42,6 +206,7 @@ export default function Dashboard() {
   const [laneSheetOpen, setLaneSheetOpen] = useState(false);
   const [laneDialogOpen, setLaneDialogOpen] = useState(false);
   const [editLane, setEditLane] = useState<Lane | null>(null);
+  const [conflictSheetOpen, setConflictSheetOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [newJobForSchedule, setNewJobForSchedule] = useState<FracJob | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -165,13 +330,23 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {hardConflicts.length > 0 && (
-            <Badge variant="destructive" className="gap-1" data-testid="badge-hard-conflicts">
+            <Badge
+              variant="destructive"
+              className="gap-1 cursor-pointer hover:opacity-80"
+              onClick={() => setConflictSheetOpen(true)}
+              data-testid="badge-hard-conflicts"
+            >
               <AlertTriangle className="w-3 h-3" />
               {uniqueHardDates.size} day(s) with issues
             </Badge>
           )}
           {warnings.length > 0 && (
-            <Badge variant="secondary" className="gap-1" data-testid="badge-warnings">
+            <Badge
+              variant="secondary"
+              className="gap-1 cursor-pointer hover:opacity-80"
+              onClick={() => setConflictSheetOpen(true)}
+              data-testid="badge-warnings"
+            >
               {uniqueWarnDates.size} warning(s)
             </Badge>
           )}
@@ -233,6 +408,13 @@ export default function Dashboard() {
         schedule={selectedSchedule}
         allocations={allocations}
         haulers={haulers}
+      />
+
+      <ConflictSheet
+        open={conflictSheetOpen}
+        onOpenChange={setConflictSheetOpen}
+        hardConflicts={hardConflicts}
+        warnings={warnings}
       />
 
       <FracJobDialog
