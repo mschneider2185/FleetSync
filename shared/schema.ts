@@ -29,7 +29,7 @@ export const fracJobs = pgTable("frac_jobs", {
   customer: text("customer"),
   basin: text("basin"),
   notes: text("notes"),
-  stagesPerDay: integer("stages_per_day"),
+  stagesPerDay: real("stages_per_day"),
   tonsPerStage: integer("tons_per_stage"),
   totalStages: integer("total_stages"),
   travelTimeHours: real("travel_time_hours"),

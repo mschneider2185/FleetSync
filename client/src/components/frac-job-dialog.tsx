@@ -157,7 +157,7 @@ export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJo
                 <FormField control={form.control} name="stagesPerDay" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Stages/Day</FormLabel>
-                    <FormControl><Input type="number" {...field} value={field.value ?? ""} data-testid="input-stages-per-day" /></FormControl>
+                    <FormControl><Input type="number" step="any" {...field} value={field.value ?? ""} data-testid="input-stages-per-day" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="tonsPerStage" render={({ field }) => (
