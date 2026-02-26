@@ -10,7 +10,7 @@ import {
   type AllocationBlock, type InsertAllocationBlock,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lte, gte, ne } from "drizzle-orm";
 
 export interface IStorage {
   getLanes(): Promise<Lane[]>;
@@ -50,6 +50,7 @@ export interface IStorage {
 
   getAllocationsByScenario(scenarioId: number): Promise<AllocationBlock[]>;
   getAllocation(id: number): Promise<AllocationBlock | undefined>;
+  findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number): Promise<AllocationBlock[]>;
   createAllocation(allocation: InsertAllocationBlock): Promise<AllocationBlock>;
   updateAllocation(id: number, allocation: Partial<InsertAllocationBlock>): Promise<AllocationBlock | undefined>;
   deleteAllocation(id: number): Promise<void>;
@@ -111,6 +112,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
   async deleteFracJob(id: number): Promise<void> {
+    await db.delete(allocationBlocks).where(eq(allocationBlocks.fracJobId, id));
+    await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.fracJobId, id));
     await db.delete(fracJobs).where(eq(fracJobs.id, id));
   }
 
@@ -152,6 +155,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
   async deleteHauler(id: number): Promise<void> {
+    await db.delete(allocationBlocks).where(eq(allocationBlocks.haulerId, id));
+    await db.delete(haulerCapacityExceptions).where(eq(haulerCapacityExceptions.haulerId, id));
     await db.delete(haulers).where(eq(haulers.id, id));
   }
 
@@ -172,6 +177,19 @@ export class DatabaseStorage implements IStorage {
   async getAllocation(id: number): Promise<AllocationBlock | undefined> {
     const [allocation] = await db.select().from(allocationBlocks).where(eq(allocationBlocks.id, id));
     return allocation;
+  }
+  async findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number): Promise<AllocationBlock[]> {
+    let conditions = [
+      eq(allocationBlocks.scenarioId, scenarioId),
+      eq(allocationBlocks.fracJobId, fracJobId),
+      eq(allocationBlocks.haulerId, haulerId),
+      lte(allocationBlocks.startDate, endDate),
+      gte(allocationBlocks.endDate, startDate),
+    ];
+    if (excludeId) {
+      conditions.push(ne(allocationBlocks.id, excludeId));
+    }
+    return db.select().from(allocationBlocks).where(and(...conditions));
   }
   async createAllocation(allocation: InsertAllocationBlock): Promise<AllocationBlock> {
     const [created] = await db.insert(allocationBlocks).values(allocation).returning();

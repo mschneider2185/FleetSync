@@ -247,6 +247,13 @@ export async function registerRoutes(
   app.post("/api/allocations", isAuthenticated, async (req, res) => {
     try {
       const validated = validateBody(insertAllocationBlockSchema, req.body);
+      const overlapping = await storage.findOverlappingAllocations(
+        validated.scenarioId, validated.fracJobId, validated.haulerId,
+        validated.startDate, validated.endDate
+      );
+      if (overlapping.length > 0) {
+        return res.status(409).json({ message: "An allocation already exists for this hauler and frac job on the specified dates" });
+      }
       const data = await storage.createAllocation(validated);
       res.json(data);
     } catch (e) {
@@ -256,8 +263,25 @@ export async function registerRoutes(
   });
   app.patch("/api/allocations/:id", isAuthenticated, async (req, res) => {
     try {
+      const allocId = Number(req.params.id);
       const validated = insertAllocationBlockSchema.partial().parse(req.body);
-      const data = await storage.updateAllocation(Number(req.params.id), validated);
+      if (validated.startDate || validated.endDate) {
+        const existing = await storage.getAllocation(allocId);
+        if (existing) {
+          const overlapping = await storage.findOverlappingAllocations(
+            validated.scenarioId ?? existing.scenarioId,
+            validated.fracJobId ?? existing.fracJobId,
+            validated.haulerId ?? existing.haulerId,
+            validated.startDate ?? existing.startDate,
+            validated.endDate ?? existing.endDate,
+            allocId
+          );
+          if (overlapping.length > 0) {
+            return res.status(409).json({ message: "This change would overlap with an existing allocation" });
+          }
+        }
+      }
+      const data = await storage.updateAllocation(allocId, validated);
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
