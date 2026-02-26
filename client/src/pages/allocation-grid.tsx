@@ -26,12 +26,16 @@ interface EditingCell {
 
 interface AllocationGridContentProps {
   compact?: boolean;
+  externalStartDate?: Date;
+  selectedDate?: string | null;
 }
 
-export function AllocationGridContent({ compact = false }: AllocationGridContentProps) {
+export function AllocationGridContent({ compact = false, externalStartDate, selectedDate: selectedDateProp }: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
-  const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
+  const [internalStartDate, setInternalStartDate] = useState(() => startOfDay(new Date()));
+  const startDate = externalStartDate || internalStartDate;
+  const setStartDate = externalStartDate ? () => {} : setInternalStartDate;
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -339,11 +343,13 @@ export function AllocationGridContent({ compact = false }: AllocationGridContent
                 {dates.map((date, i) => {
                   const ds = dateStrings[i];
                   const isToday = ds === today;
+                  const isSelected = ds === selectedDateProp;
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                   return (
                     <th
                       key={i}
                       className={`border-b border-r px-1 py-1.5 text-center font-normal ${
+                        isSelected ? "bg-primary/15 font-semibold text-primary ring-1 ring-inset ring-primary/30" :
                         isToday ? "bg-primary/10 font-semibold text-primary" :
                         isWeekend ? "bg-muted/40 text-muted-foreground" :
                         "bg-background text-muted-foreground"

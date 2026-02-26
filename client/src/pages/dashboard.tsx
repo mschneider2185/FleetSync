@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { startOfDay, parseISO } from "date-fns";
 import { GanttChart } from "@/components/gantt-chart";
 import { FracDetailPanel } from "@/components/frac-detail-panel";
 import { FracJobDialog } from "@/components/frac-job-dialog";
@@ -210,6 +211,8 @@ export default function Dashboard() {
   const [conflictSheetOpen, setConflictSheetOpen] = useState(false);
   const [ganttCollapsed, setGanttCollapsed] = useState(false);
   const [gridCollapsed, setGridCollapsed] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [viewDate, setViewDate] = useState<string | null>(null);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [newJobForSchedule, setNewJobForSchedule] = useState<FracJob | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -322,6 +325,12 @@ export default function Dashboard() {
   const selectedFrac = fracJobs.find(f => f.id === selectedFracId) || null;
   const selectedSchedule = schedules.find(s => s.fracJobId === selectedFracId) || null;
 
+  const gridStartDate = useMemo(() => {
+    const dateToUse = selectedDate || viewDate;
+    if (dateToUse) return startOfDay(parseISO(dateToUse));
+    return undefined;
+  }, [selectedDate, viewDate]);
+
   const isLoading = lanesLoading || fracLoading || schedulesLoading;
 
   return (
@@ -388,8 +397,8 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className={`flex flex-col ${ganttCollapsed ? "" : gridCollapsed ? "flex-1" : "flex-1 basis-1/2"} overflow-hidden`}>
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className={`flex flex-col min-h-0 shrink-0 ${!ganttCollapsed ? (gridCollapsed ? "flex-1" : "flex-1 basis-1/2") : ""}`}>
             <button
               onClick={() => setGanttCollapsed(!ganttCollapsed)}
               className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
@@ -399,13 +408,16 @@ export default function Dashboard() {
               Gantt Schedule
             </button>
             {!ganttCollapsed && (
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <GanttChart
                   lanes={lanes}
                   fracJobs={fracJobs}
                   schedules={schedules}
                   conflicts={conflicts}
                   isLocked={isLocked}
+                  selectedDate={selectedDate}
+                  onDateSelect={setSelectedDate}
+                  onViewDateChange={setViewDate}
                   onScheduleUpdate={(id, start, end) => updateScheduleMutation.mutate({ id, startDate: start, endDate: end })}
                   onFracClick={(fracId) => {
                     setSelectedFracId(fracId);
@@ -416,7 +428,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className={`flex flex-col ${gridCollapsed ? "" : ganttCollapsed ? "flex-1" : "flex-1 basis-1/2"} overflow-hidden`}>
+          <div className={`flex flex-col min-h-0 shrink-0 ${!gridCollapsed ? (ganttCollapsed ? "flex-1" : "flex-1 basis-1/2") : ""}`}>
             <button
               onClick={() => setGridCollapsed(!gridCollapsed)}
               className="flex items-center gap-2 px-4 py-1.5 bg-muted/30 border-b border-t text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors shrink-0"
@@ -426,8 +438,8 @@ export default function Dashboard() {
               Allocation Grid
             </button>
             {!gridCollapsed && (
-              <div className="flex-1 overflow-hidden">
-                <AllocationGridContent compact />
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <AllocationGridContent compact externalStartDate={gridStartDate} selectedDate={selectedDate} />
               </div>
             )}
           </div>

@@ -21,6 +21,9 @@ interface GanttChartProps {
   conflicts: Conflict[];
   onScheduleUpdate?: (scheduleId: number, newStartDate: string, newEndDate: string) => void;
   onFracClick?: (fracJobId: number) => void;
+  onDateSelect?: (dateStr: string) => void;
+  onViewDateChange?: (dateStr: string) => void;
+  selectedDate?: string | null;
   isLocked?: boolean;
 }
 
@@ -51,6 +54,9 @@ export function GanttChart({
   conflicts,
   onScheduleUpdate,
   onFracClick,
+  onDateSelect,
+  onViewDateChange,
+  selectedDate,
   isLocked,
 }: GanttChartProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -128,13 +134,28 @@ export function GanttChart({
     setDragState(null);
   }, [dragState, onScheduleUpdate]);
 
+  const getVisibleCenterDate = (el: HTMLDivElement) => {
+    const centerPx = el.scrollLeft + el.clientWidth / 2;
+    const dayIndex = Math.floor(centerPx / dayWidth);
+    return format(addDays(dateRange.start, Math.max(0, Math.min(dayIndex, dateRange.days - 1))), "yyyy-MM-dd");
+  };
+
   const scrollBy = (days: number) => {
-    scrollRef.current?.scrollBy({ left: days * dayWidth, behavior: "smooth" });
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollBy({ left: days * dayWidth, behavior: "smooth" });
+    setTimeout(() => {
+      if (scrollRef.current && onViewDateChange) {
+        onViewDateChange(getVisibleCenterDate(scrollRef.current));
+      }
+    }, 350);
   };
 
   const scrollToToday = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
+      if (onViewDateChange) {
+        onViewDateChange(format(new Date(), "yyyy-MM-dd"));
+      }
     }
   };
 
@@ -274,18 +295,23 @@ export function GanttChart({
             {showDayLabels ? (
               <div className="flex">
                 {dates.map((date, i) => {
-                  const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                  const dateStr = format(date, "yyyy-MM-dd");
+                  const isToday = dateStr === format(today, "yyyy-MM-dd");
+                  const isSelected = dateStr === selectedDate;
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                   const isMonthStart = date.getDate() === 1;
                   return (
                     <div
                       key={i}
-                      className={`flex flex-col items-center justify-end pb-1 border-r text-[10px] ${
+                      className={`flex flex-col items-center justify-end pb-1 border-r text-[10px] cursor-pointer transition-colors ${
+                        isSelected ? "bg-primary/15 font-semibold text-primary ring-1 ring-inset ring-primary/30" :
                         isToday ? "bg-primary/5 font-semibold text-primary" :
                         isWeekend ? "bg-muted/30 text-muted-foreground" :
-                        "text-muted-foreground"
+                        "text-muted-foreground hover:bg-muted/20"
                       } ${isMonthStart ? "border-l-2 border-l-border" : ""}`}
                       style={{ width: dayWidth, minWidth: dayWidth }}
+                      onClick={() => onDateSelect?.(dateStr)}
+                      data-testid={`gantt-date-${dateStr}`}
                     >
                       {(i === 0 || isMonthStart) && (
                         <span className="text-[9px] font-medium mb-0.5">{format(date, "MMM yyyy")}</span>
@@ -358,6 +384,19 @@ export function GanttChart({
                       style={{ left: todayOffset * dayWidth + dayWidth / 2 }}
                     />
                   )}
+
+                  {selectedDate && showDayLabels && (() => {
+                    const selOffset = differenceInDays(parseISO(selectedDate), dateRange.start);
+                    if (selOffset >= 0 && selOffset < dateRange.days) {
+                      return (
+                        <div
+                          className="absolute top-0 bottom-0 bg-primary/8 z-0 border-l border-r border-primary/20"
+                          style={{ left: selOffset * dayWidth, width: dayWidth }}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {laneSchedules.map(schedule => {
                     const frac = fracMap.get(schedule.fracJobId);
