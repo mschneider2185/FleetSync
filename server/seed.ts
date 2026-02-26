@@ -1,0 +1,160 @@
+import { db } from "./db";
+import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+export async function seedDatabase() {
+  const existingLanes = await db.select().from(lanes);
+  if (existingLanes.length > 0) return;
+
+  const [lane1] = await db.insert(lanes).values([
+    { name: "EVO1", color: "#3b82f6", sortOrder: 0 },
+    { name: "EVO10", color: "#f97316", sortOrder: 1 },
+    { name: "FLEET3", color: "#10b981", sortOrder: 2 },
+    { name: "FLEET4", color: "#8b5cf6", sortOrder: 3 },
+  ]).returning();
+
+  const allLanes = await db.select().from(lanes);
+
+  const [forecastScenario] = await db.insert(scenarios).values([
+    { name: "Baseline Q1 2026", type: "baseline", locked: true },
+    { name: "Forecast Q1 2026", type: "forecast", locked: false },
+  ]).returning();
+
+  const allScenarios = await db.select().from(scenarios);
+  const forecast = allScenarios.find(s => s.type === "forecast")!;
+
+  const createdJobs = await db.insert(fracJobs).values([
+    {
+      padName: "BIG177",
+      laneId: allLanes[0].id,
+      customer: "COP",
+      basin: "Permian",
+      stagesPerDay: 8,
+      tonsPerStage: 500,
+      totalStages: 160,
+      travelTimeHours: 1.5,
+      avgTonsPerLoad: 24,
+      storageType: "silo",
+      storageCapacity: 200,
+    },
+    {
+      padName: "MINGO22",
+      laneId: allLanes[0].id,
+      customer: "Devon",
+      basin: "Permian",
+      stagesPerDay: 6,
+      tonsPerStage: 450,
+      totalStages: 120,
+      travelTimeHours: 2.0,
+      avgTonsPerLoad: 24,
+      storageType: "kube",
+      storageCapacity: 150,
+    },
+    {
+      padName: "TEAMWORK44",
+      laneId: allLanes[1].id,
+      customer: "Pioneer",
+      basin: "Delaware",
+      stagesPerDay: 10,
+      tonsPerStage: 550,
+      totalStages: 200,
+      travelTimeHours: 1.0,
+      avgTonsPerLoad: 25,
+      storageType: "silo",
+      storageCapacity: 250,
+    },
+    {
+      padName: "EAGLE99",
+      laneId: allLanes[2].id,
+      customer: "EOG",
+      basin: "Midland",
+      stagesPerDay: 7,
+      tonsPerStage: 480,
+      totalStages: 140,
+      travelTimeHours: 1.8,
+      avgTonsPerLoad: 24,
+      storageType: "silo",
+      storageCapacity: 180,
+    },
+    {
+      padName: "HAWK15",
+      laneId: allLanes[3].id,
+      customer: "Diamondback",
+      basin: "Permian",
+      stagesPerDay: 9,
+      tonsPerStage: 520,
+      totalStages: 180,
+      travelTimeHours: 1.2,
+      avgTonsPerLoad: 25,
+      storageType: "kube",
+      storageCapacity: 200,
+    },
+  ]).returning();
+
+  await db.insert(scenarioFracSchedules).values([
+    {
+      scenarioId: forecast.id,
+      fracJobId: createdJobs[0].id,
+      plannedStartDate: "2026-02-22",
+      plannedEndDate: "2026-03-13",
+      transitionDaysAfter: 3,
+      requiredTrucksPerShift: 12,
+      status: "active",
+    },
+    {
+      scenarioId: forecast.id,
+      fracJobId: createdJobs[1].id,
+      plannedStartDate: "2026-03-16",
+      plannedEndDate: "2026-04-04",
+      transitionDaysAfter: 2,
+      requiredTrucksPerShift: 10,
+      status: "planned",
+    },
+    {
+      scenarioId: forecast.id,
+      fracJobId: createdJobs[2].id,
+      plannedStartDate: "2026-02-25",
+      plannedEndDate: "2026-03-16",
+      transitionDaysAfter: 3,
+      requiredTrucksPerShift: 14,
+      status: "active",
+    },
+    {
+      scenarioId: forecast.id,
+      fracJobId: createdJobs[3].id,
+      plannedStartDate: "2026-03-01",
+      plannedEndDate: "2026-03-20",
+      transitionDaysAfter: 2,
+      requiredTrucksPerShift: 11,
+      status: "planned",
+    },
+    {
+      scenarioId: forecast.id,
+      fracJobId: createdJobs[4].id,
+      plannedStartDate: "2026-03-05",
+      plannedEndDate: "2026-03-24",
+      transitionDaysAfter: 3,
+      requiredTrucksPerShift: 13,
+      status: "planned",
+    },
+  ]);
+
+  const createdHaulers = await db.insert(haulers).values([
+    { name: "ET", splitAllowed: false, homeArea: "Midland", defaultMaxTrucksPerShift: 15, defaultMinCommittedTrucksPerShift: 8 },
+    { name: "HWE", splitAllowed: false, homeArea: "Pecos", defaultMaxTrucksPerShift: 12, defaultMinCommittedTrucksPerShift: 5 },
+    { name: "Seven Point", splitAllowed: false, homeArea: "Odessa", defaultMaxTrucksPerShift: 10, defaultMinCommittedTrucksPerShift: 4 },
+    { name: "Revolution", splitAllowed: true, homeArea: "Midland", defaultMaxTrucksPerShift: 20, defaultMinCommittedTrucksPerShift: 10 },
+    { name: "Patriot", splitAllowed: false, homeArea: "Carlsbad", defaultMaxTrucksPerShift: 8, defaultMinCommittedTrucksPerShift: 3 },
+  ]).returning();
+
+  await db.insert(allocationBlocks).values([
+    { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: createdHaulers[0].id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 8 },
+    { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: createdHaulers[1].id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 4 },
+    { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: createdHaulers[3].id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 10 },
+    { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: createdHaulers[2].id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 4 },
+    { scenarioId: forecast.id, fracJobId: createdJobs[3].id, haulerId: createdHaulers[4].id, startDate: "2026-03-01", endDate: "2026-03-15", trucksPerShift: 6 },
+    { scenarioId: forecast.id, fracJobId: createdJobs[4].id, haulerId: createdHaulers[3].id, startDate: "2026-03-10", endDate: "2026-03-20", trucksPerShift: 8 },
+  ]);
+
+  console.log("Database seeded successfully");
+}
