@@ -22,12 +22,15 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 
 ## Key Features (MVP)
 - Interactive Gantt chart with drag-and-drop frac scheduling by lane
-- Daily allocation grid (Excel-like) showing hauler assignments vs frac needs
+- Daily allocation grid (Excel-like) showing hauler assignments vs frac needs (fixed-layout table alignment)
 - Scenario management (Baseline/Forecast/Sandbox) with clone and compare
 - Frac job builder with sand plan details
 - Hauler management with capacity tracking
 - Real-time conflict detection (over-capacity, under-supplied, zero buffer)
 - Frac detail panel with sand info, demand calculations, and hauler assignments
+- Lane management panel (create, rename, recolor, delete lanes)
+- Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
+- Step-by-step truck recommendation breakdown in demand tab
 
 ## Project Structure
 ```
@@ -37,10 +40,11 @@ client/src/
     app-sidebar.tsx            # Navigation sidebar
     gantt-chart.tsx            # Custom Gantt timeline component
     scenario-selector.tsx      # Scenario dropdown + sandbox creation
-    frac-job-dialog.tsx        # Create/edit frac job form
-    hauler-dialog.tsx          # Create/edit hauler form
+    frac-job-dialog.tsx        # Create/edit frac job form (with useEffect reset)
+    hauler-dialog.tsx          # Create/edit hauler form (with useEffect reset)
     allocation-dialog.tsx      # Create/edit allocation form
-    frac-detail-panel.tsx      # Side panel with frac details
+    frac-detail-panel.tsx      # Side panel with frac details + demand breakdown
+    lane-dialog.tsx            # Create/edit lane (name, color, sort order)
   pages/
     landing.tsx                # Auth landing page
     dashboard.tsx              # Gantt schedule view (main page)

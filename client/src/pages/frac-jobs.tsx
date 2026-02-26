@@ -28,6 +28,7 @@ export default function FracJobs() {
   const [editJob, setEditJob] = useState<FracJob | null>(null);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [scheduleFormFracId, setScheduleFormFracId] = useState<number | null>(null);
+  const [editScheduleId, setEditScheduleId] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     startDate: "", endDate: "", requiredTrucksPerShift: 10, transitionDaysAfter: 2, status: "planned",
   });
@@ -55,9 +56,18 @@ export default function FracJobs() {
     },
   });
 
-  const addScheduleMutation = useMutation({
+  const saveScheduleMutation = useMutation({
     mutationFn: async () => {
       if (!activeScenarioId || !scheduleFormFracId) return;
+      if (editScheduleId) {
+        return apiRequest("PATCH", `/api/schedules/${editScheduleId}`, {
+          plannedStartDate: scheduleForm.startDate,
+          plannedEndDate: scheduleForm.endDate,
+          requiredTrucksPerShift: scheduleForm.requiredTrucksPerShift,
+          transitionDaysAfter: scheduleForm.transitionDaysAfter,
+          status: scheduleForm.status,
+        });
+      }
       return apiRequest("POST", "/api/schedules", {
         scenarioId: activeScenarioId,
         fracJobId: scheduleFormFracId,
@@ -71,9 +81,29 @@ export default function FracJobs() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "schedules"] });
       setScheduleDialogOpen(false);
-      toast({ title: "Schedule added to scenario" });
+      toast({ title: editScheduleId ? "Schedule updated" : "Schedule added to scenario" });
     },
   });
+
+  const openAddSchedule = (fracId: number) => {
+    setScheduleFormFracId(fracId);
+    setEditScheduleId(null);
+    setScheduleForm({ startDate: "", endDate: "", requiredTrucksPerShift: 10, transitionDaysAfter: 2, status: "planned" });
+    setScheduleDialogOpen(true);
+  };
+
+  const openEditSchedule = (fracId: number, schedule: ScenarioFracSchedule) => {
+    setScheduleFormFracId(fracId);
+    setEditScheduleId(schedule.id);
+    setScheduleForm({
+      startDate: schedule.plannedStartDate,
+      endDate: schedule.plannedEndDate,
+      requiredTrucksPerShift: schedule.requiredTrucksPerShift,
+      transitionDaysAfter: schedule.transitionDaysAfter,
+      status: schedule.status,
+    });
+    setScheduleDialogOpen(true);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -142,9 +172,20 @@ export default function FracJobs() {
                         {job.travelTimeHours && <span>{job.travelTimeHours}hr travel</span>}
                       </div>
                       {schedule && (
-                        <div className="text-xs text-muted-foreground">
-                          Scheduled: {format(parseISO(schedule.plannedStartDate), "MMM d")} - {format(parseISO(schedule.plannedEndDate), "MMM d, yyyy")}
-                          &ensp;&middot;&ensp;{schedule.requiredTrucksPerShift} trucks/shift
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            Scheduled: {format(parseISO(schedule.plannedStartDate), "MMM d")} - {format(parseISO(schedule.plannedEndDate), "MMM d, yyyy")}
+                            &ensp;&middot;&ensp;{schedule.requiredTrucksPerShift} trucks/shift
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => openEditSchedule(job.id, schedule)}
+                            data-testid={`button-edit-schedule-${job.id}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -153,10 +194,7 @@ export default function FracJobs() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => {
-                            setScheduleFormFracId(job.id);
-                            setScheduleDialogOpen(true);
-                          }}
+                          onClick={() => openAddSchedule(job.id)}
                           data-testid={`button-schedule-${job.id}`}
                         >
                           <CalendarPlus className="w-4 h-4" />
@@ -196,7 +234,7 @@ export default function FracJobs() {
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add to Scenario Schedule</DialogTitle>
+            <DialogTitle>{editScheduleId ? "Edit Schedule" : "Add to Scenario Schedule"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -259,11 +297,11 @@ export default function FracJobs() {
           </div>
           <DialogFooter>
             <Button
-              onClick={() => addScheduleMutation.mutate()}
-              disabled={addScheduleMutation.isPending}
+              onClick={() => saveScheduleMutation.mutate()}
+              disabled={saveScheduleMutation.isPending}
               data-testid="button-confirm-schedule"
             >
-              {addScheduleMutation.isPending ? "Adding..." : "Add Schedule"}
+              {saveScheduleMutation.isPending ? "Saving..." : editScheduleId ? "Update Schedule" : "Add Schedule"}
             </Button>
           </DialogFooter>
         </DialogContent>

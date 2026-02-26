@@ -14,25 +14,35 @@ interface FracDetailPanelProps {
   haulers: Hauler[];
 }
 
-function computeRecommendedTrucks(fracJob: FracJob): { value: number; formula: string } | null {
+interface TruckRecommendation {
+  value: number;
+  tonsPerDay: number;
+  tonsPerShift: number;
+  cycleTime: number;
+  loadsPerShift: number;
+  tonsPerTruckPerShift: number;
+}
+
+function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null {
   if (!fracJob.stagesPerDay || !fracJob.tonsPerStage) return null;
+  if (!fracJob.avgTonsPerLoad || !fracJob.travelTimeHours) return null;
 
   const tonsPerDay = fracJob.stagesPerDay * fracJob.tonsPerStage;
   const tonsPerShift = tonsPerDay / 2;
+  const loadUnloadTime = 1.5;
+  const cycleTime = fracJob.travelTimeHours * 2 + loadUnloadTime;
+  const loadsPerShift = 12 / cycleTime;
+  const tonsPerTruckPerShift = loadsPerShift * fracJob.avgTonsPerLoad;
+  const recommended = Math.ceil(tonsPerShift / tonsPerTruckPerShift);
 
-  if (fracJob.avgTonsPerLoad && fracJob.travelTimeHours) {
-    const loadUnloadTime = 1.5;
-    const cycleTime = fracJob.travelTimeHours * 2 + loadUnloadTime;
-    const loadsPerShift = 12 / cycleTime;
-    const tonsPerTruckPerShift = loadsPerShift * fracJob.avgTonsPerLoad;
-    const recommended = Math.ceil(tonsPerShift / tonsPerTruckPerShift);
-    return {
-      value: recommended,
-      formula: `${tonsPerShift.toFixed(0)} tons/shift / ${tonsPerTruckPerShift.toFixed(1)} tons/truck/shift = ${recommended} trucks`,
-    };
-  }
-
-  return null;
+  return {
+    value: recommended,
+    tonsPerDay,
+    tonsPerShift,
+    cycleTime,
+    loadsPerShift,
+    tonsPerTruckPerShift,
+  };
 }
 
 export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers }: FracDetailPanelProps) {
@@ -157,27 +167,82 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
           <TabsContent value="demand" className="space-y-4 pt-2">
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Required Trucks/Shift</p>
-                <Badge variant="secondary">{schedule?.requiredTrucksPerShift || 0}</Badge>
+                <p className="text-sm font-medium">Required Trucks/Shift (set)</p>
+                <Badge variant="secondary" data-testid="badge-required-trucks">{schedule?.requiredTrucksPerShift || 0}</Badge>
               </div>
 
               {recommendation && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">Recommended (Computed)</p>
-                    <Badge variant="outline">{recommendation.value}</Badge>
+                    <Badge variant="outline" data-testid="badge-recommended-trucks">{recommendation.value}</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">{recommendation.formula}</p>
                 </div>
               )}
             </div>
 
-            <div className="text-xs text-muted-foreground">
-              <p>The recommended value uses a simple cycle-time model:</p>
-              <p className="mt-1">Cycle = 2 x travel time + 1.5hr load/unload</p>
-              <p>Loads/shift = 12hr / cycle</p>
-              <p>Tons/truck/shift = loads x avg tons/load</p>
-            </div>
+            {recommendation && (
+              <div className="rounded-md border p-4 space-y-2">
+                <p className="text-xs font-medium text-foreground mb-2">Calculation Breakdown</p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Demand per day</span>
+                    <span className="font-mono text-foreground" data-testid="text-tons-per-day">
+                      {fracJob.stagesPerDay} stg × {fracJob.tonsPerStage} tons = {recommendation.tonsPerDay.toLocaleString()} tons/day
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Per 12-hr shift</span>
+                    <span className="font-mono text-foreground" data-testid="text-tons-per-shift">
+                      {recommendation.tonsPerShift.toLocaleString()} tons/shift
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Round-trip travel</span>
+                    <span className="font-mono text-foreground">
+                      {fracJob.travelTimeHours} × 2 = {(fracJob.travelTimeHours! * 2).toFixed(1)} hrs
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Load + unload time</span>
+                    <span className="font-mono text-foreground">1.5 hrs</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Cycle time</span>
+                    <span className="font-mono text-foreground" data-testid="text-cycle-time">
+                      {recommendation.cycleTime.toFixed(1)} hrs
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Loads per truck per shift</span>
+                    <span className="font-mono text-foreground" data-testid="text-loads-per-shift">
+                      12 / {recommendation.cycleTime.toFixed(1)} = {recommendation.loadsPerShift.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Tons per truck per shift</span>
+                    <span className="font-mono text-foreground" data-testid="text-tons-per-truck">
+                      {recommendation.loadsPerShift.toFixed(2)} × {fracJob.avgTonsPerLoad} = {recommendation.tonsPerTruckPerShift.toFixed(1)} tons
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between font-medium text-foreground">
+                    <span>Trucks needed</span>
+                    <span className="font-mono" data-testid="text-trucks-needed">
+                      ⌈{recommendation.tonsPerShift.toLocaleString()} / {recommendation.tonsPerTruckPerShift.toFixed(1)}⌉ = {recommendation.value}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!recommendation && (
+              <div className="text-xs text-muted-foreground rounded-md border p-3">
+                <p>Fill in stages/day, tons/stage, travel time, and avg tons/load on the frac job to see the computed recommendation.</p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="assignments" className="space-y-3 pt-2">

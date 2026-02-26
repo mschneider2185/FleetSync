@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { format, addDays, parseISO, differenceInDays, startOfDay } from "date-fns";
+import { format, addDays, startOfDay } from "date-fns";
 import { ScenarioSelector } from "@/components/scenario-selector";
 import { AllocationDialog } from "@/components/allocation-dialog";
 import { useScenario } from "@/hooks/use-scenario";
@@ -9,12 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 
 const DAYS_VISIBLE = 21;
 const COL_WIDTH = 52;
+const LABEL_WIDTH = 200;
 
 export default function AllocationGrid() {
   const { activeScenarioId } = useScenario();
@@ -48,15 +48,6 @@ export default function AllocationGrid() {
     enabled: !!activeScenarioId,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/allocations/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
-      toast({ title: "Allocation removed" });
-    },
-  });
-
   const dates = useMemo(() =>
     Array.from({ length: DAYS_VISIBLE }, (_, i) => addDays(startDate, i)),
     [startDate]
@@ -73,27 +64,17 @@ export default function AllocationGrid() {
     return schedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
   }, [schedules, startDate]);
 
-  const getAllocForDay = (fracJobId: number, haulerId: number, dateStr: string) => {
-    return allocations.find(a =>
+  const getTrucksForDay = (fracJobId: number, haulerId: number, dateStr: string) => {
+    const alloc = allocations.find(a =>
       a.fracJobId === fracJobId && a.haulerId === haulerId &&
       a.startDate <= dateStr && a.endDate >= dateStr
     );
-  };
-
-  const getTrucksForDay = (fracJobId: number, haulerId: number, dateStr: string) => {
-    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
     return alloc ? alloc.trucksPerShift : 0;
   };
 
   const getTotalForFracDay = (fracJobId: number, dateStr: string) => {
     return allocations
       .filter(a => a.fracJobId === fracJobId && a.startDate <= dateStr && a.endDate >= dateStr)
-      .reduce((sum, a) => sum + a.trucksPerShift, 0);
-  };
-
-  const getHaulerTotalForDay = (haulerId: number, dateStr: string) => {
-    return allocations
-      .filter(a => a.haulerId === haulerId && a.startDate <= dateStr && a.endDate >= dateStr)
       .reduce((sum, a) => sum + a.trucksPerShift, 0);
   };
 
@@ -109,7 +90,6 @@ export default function AllocationGrid() {
     return schedule.plannedStartDate <= dateStr && schedule.plannedEndDate >= dateStr;
   };
 
-  const activeScenario = scenarios.find(s => s.id === activeScenarioId);
   const today = format(new Date(), "yyyy-MM-dd");
 
   return (
@@ -146,10 +126,16 @@ export default function AllocationGrid() {
         </div>
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="w-max border-collapse text-xs">
+          <table className="border-collapse text-xs" style={{ tableLayout: "fixed", width: LABEL_WIDTH + DAYS_VISIBLE * COL_WIDTH }}>
+            <colgroup>
+              <col style={{ width: LABEL_WIDTH }} />
+              {dates.map((_, i) => (
+                <col key={i} style={{ width: COL_WIDTH }} />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-background">
               <tr>
-                <th className="sticky left-0 z-30 bg-background border-b border-r px-3 py-2 text-left font-medium text-muted-foreground min-w-[180px]">
+                <th className="sticky left-0 z-30 bg-background border-b border-r px-3 py-2 text-left font-medium text-muted-foreground" style={{ width: LABEL_WIDTH }}>
                   Frac / Hauler
                 </th>
                 {dates.map((date, i) => {
@@ -164,7 +150,7 @@ export default function AllocationGrid() {
                         isWeekend ? "bg-muted/30 text-muted-foreground" :
                         "text-muted-foreground"
                       }`}
-                      style={{ minWidth: COL_WIDTH, width: COL_WIDTH }}
+                      style={{ width: COL_WIDTH }}
                     >
                       <div className="text-[10px]">{format(date, "EEE")}</div>
                       <div>{format(date, "M/d")}</div>
@@ -185,21 +171,21 @@ export default function AllocationGrid() {
                 return (
                   <tbody key={schedule.id}>
                     <tr className="bg-muted/40">
-                      <td className="sticky left-0 z-10 bg-muted/40 border-b border-r px-3 py-2">
+                      <td className="sticky left-0 z-10 bg-muted/40 border-b border-r px-3 py-2" style={{ width: LABEL_WIDTH }}>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             {lane && (
                               <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: lane.color }} />
                             )}
-                            <span className="font-semibold text-sm" data-testid={`text-grid-frac-${frac.id}`}>{frac.padName}</span>
-                            <Badge variant="secondary" className="text-[10px]">
+                            <span className="font-semibold text-sm truncate" data-testid={`text-grid-frac-${frac.id}`}>{frac.padName}</span>
+                            <Badge variant="secondary" className="text-[10px] shrink-0">
                               Needs {schedule.requiredTrucksPerShift}
                             </Badge>
                           </div>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6"
+                            className="h-6 w-6 shrink-0"
                             onClick={() => {
                               setAllocDialogFrac(frac.id);
                               setAllocDialogOpen(true);
@@ -212,13 +198,14 @@ export default function AllocationGrid() {
                       </td>
                       {dateStrings.map((ds, i) => {
                         const active = isSchedActiveOnDate(schedule, ds);
-                        if (!active) return <td key={i} className="border-b border-r bg-muted/20" />;
+                        if (!active) return <td key={i} className="border-b border-r bg-muted/20" style={{ width: COL_WIDTH }} />;
                         const total = getTotalForFracDay(schedule.fracJobId, ds);
                         const diff = total - schedule.requiredTrucksPerShift;
                         return (
                           <td
                             key={i}
                             className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, schedule.requiredTrucksPerShift)}`}
+                            style={{ width: COL_WIDTH }}
                           >
                             {total > 0 ? total : ""}
                             {diff !== 0 && total > 0 && (
@@ -236,20 +223,20 @@ export default function AllocationGrid() {
                       if (!hauler) return null;
                       return (
                         <tr key={`${schedule.id}-${haulerId}`}>
-                          <td className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1.5 pl-8">
+                          <td className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1.5 pl-8" style={{ width: LABEL_WIDTH }}>
                             <div className="flex items-center justify-between">
-                              <span className="text-muted-foreground">{hauler.name}</span>
-                              <span className="text-[10px] text-muted-foreground">
+                              <span className="text-muted-foreground truncate">{hauler.name}</span>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
                                 max {hauler.defaultMaxTrucksPerShift}
                               </span>
                             </div>
                           </td>
                           {dateStrings.map((ds, i) => {
                             const active = isSchedActiveOnDate(schedule, ds);
-                            if (!active) return <td key={i} className="border-b border-r" />;
+                            if (!active) return <td key={i} className="border-b border-r" style={{ width: COL_WIDTH }} />;
                             const trucks = getTrucksForDay(schedule.fracJobId, haulerId, ds);
                             return (
-                              <td key={i} className="border-b border-r text-center py-1 text-muted-foreground">
+                              <td key={i} className="border-b border-r text-center py-1 text-muted-foreground" style={{ width: COL_WIDTH }}>
                                 {trucks > 0 ? trucks : ""}
                               </td>
                             );
@@ -262,7 +249,7 @@ export default function AllocationGrid() {
               })}
 
               <tr className="bg-muted/30">
-                <td className="sticky left-0 z-10 bg-muted/30 border-b border-r px-3 py-2 font-semibold text-sm">
+                <td className="sticky left-0 z-10 bg-muted/30 border-b border-r px-3 py-2 font-semibold text-sm" style={{ width: LABEL_WIDTH }}>
                   Hauler Totals
                 </td>
                 {dateStrings.map((ds, i) => {
@@ -270,7 +257,7 @@ export default function AllocationGrid() {
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
                   return (
-                    <td key={i} className="border-b border-r text-center font-semibold py-2">
+                    <td key={i} className="border-b border-r text-center font-semibold py-2" style={{ width: COL_WIDTH }}>
                       {totalAllDay > 0 ? totalAllDay : ""}
                     </td>
                   );

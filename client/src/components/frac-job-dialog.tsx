@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -41,27 +42,37 @@ interface FracJobDialogProps {
   editJob?: FracJob | null;
 }
 
+function getDefaults(editJob?: FracJob | null): FormValues {
+  return {
+    padName: editJob?.padName || "",
+    laneId: editJob?.laneId || 0,
+    customer: editJob?.customer || "",
+    basin: editJob?.basin || "",
+    notes: editJob?.notes || "",
+    stagesPerDay: editJob?.stagesPerDay ?? undefined,
+    tonsPerStage: editJob?.tonsPerStage ?? undefined,
+    totalStages: editJob?.totalStages ?? undefined,
+    travelTimeHours: editJob?.travelTimeHours ?? undefined,
+    avgTonsPerLoad: editJob?.avgTonsPerLoad ?? undefined,
+    storageType: editJob?.storageType || "",
+    storageCapacity: editJob?.storageCapacity ?? undefined,
+  };
+}
+
 export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProps) {
   const { toast } = useToast();
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      padName: editJob?.padName || "",
-      laneId: editJob?.laneId || 0,
-      customer: editJob?.customer || "",
-      basin: editJob?.basin || "",
-      notes: editJob?.notes || "",
-      stagesPerDay: editJob?.stagesPerDay || undefined,
-      tonsPerStage: editJob?.tonsPerStage || undefined,
-      totalStages: editJob?.totalStages || undefined,
-      travelTimeHours: editJob?.travelTimeHours || undefined,
-      avgTonsPerLoad: editJob?.avgTonsPerLoad || undefined,
-      storageType: editJob?.storageType || "",
-      storageCapacity: editJob?.storageCapacity || undefined,
-    },
+    defaultValues: getDefaults(editJob),
   });
+
+  useEffect(() => {
+    if (open) {
+      form.reset(getDefaults(editJob));
+    }
+  }, [open, editJob]);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -74,7 +85,6 @@ export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProp
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs"] });
       toast({ title: editJob ? "Frac job updated" : "Frac job created" });
       onOpenChange(false);
-      form.reset();
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save frac job", variant: "destructive" });
@@ -135,31 +145,31 @@ export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProp
                 <FormField control={form.control} name="stagesPerDay" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Stages/Day</FormLabel>
-                    <FormControl><Input type="number" {...field} data-testid="input-stages-per-day" /></FormControl>
+                    <FormControl><Input type="number" {...field} value={field.value ?? ""} data-testid="input-stages-per-day" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="tonsPerStage" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tons/Stage</FormLabel>
-                    <FormControl><Input type="number" {...field} data-testid="input-tons-per-stage" /></FormControl>
+                    <FormControl><Input type="number" {...field} value={field.value ?? ""} data-testid="input-tons-per-stage" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="totalStages" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Total Stages</FormLabel>
-                    <FormControl><Input type="number" {...field} data-testid="input-total-stages" /></FormControl>
+                    <FormControl><Input type="number" {...field} value={field.value ?? ""} data-testid="input-total-stages" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="travelTimeHours" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Travel Time (hrs)</FormLabel>
-                    <FormControl><Input type="number" step="0.1" {...field} data-testid="input-travel-time" /></FormControl>
+                    <FormControl><Input type="number" step="0.1" {...field} value={field.value ?? ""} data-testid="input-travel-time" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="avgTonsPerLoad" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Avg Tons/Load</FormLabel>
-                    <FormControl><Input type="number" step="0.1" {...field} data-testid="input-avg-tons" /></FormControl>
+                    <FormControl><Input type="number" step="0.1" {...field} value={field.value ?? ""} data-testid="input-avg-tons" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="storageType" render={({ field }) => (
@@ -181,7 +191,7 @@ export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProp
                 <FormField control={form.control} name="storageCapacity" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Storage Capacity (tons)</FormLabel>
-                    <FormControl><Input type="number" {...field} data-testid="input-storage-capacity" /></FormControl>
+                    <FormControl><Input type="number" {...field} value={field.value ?? ""} data-testid="input-storage-capacity" /></FormControl>
                   </FormItem>
                 )} />
               </div>

@@ -2,15 +2,19 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { GanttChart } from "@/components/gantt-chart";
 import { FracDetailPanel } from "@/components/frac-detail-panel";
-import { AllocationDialog } from "@/components/allocation-dialog";
+import { FracJobDialog } from "@/components/frac-job-dialog";
+import { LaneDialog } from "@/components/lane-dialog";
 import { ScenarioSelector } from "@/components/scenario-selector";
 import { useScenario } from "@/hooks/use-scenario";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, AlertTriangle } from "lucide-react";
+import { Plus, AlertTriangle, Pencil, Trash2, Route } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 
 interface Conflict {
@@ -26,7 +30,10 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [selectedFracId, setSelectedFracId] = useState<number | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [allocDialogOpen, setAllocDialogOpen] = useState(false);
+  const [fracDialogOpen, setFracDialogOpen] = useState(false);
+  const [laneSheetOpen, setLaneSheetOpen] = useState(false);
+  const [laneDialogOpen, setLaneDialogOpen] = useState(false);
+  const [editLane, setEditLane] = useState<Lane | null>(null);
 
   const { data: lanes = [], isLoading: lanesLoading } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [], isLoading: fracLoading } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -77,6 +84,17 @@ export default function Dashboard() {
     },
   });
 
+  const deleteLaneMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/lanes/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/lanes"] });
+      toast({ title: "Lane deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Cannot delete a lane with frac jobs assigned", variant: "destructive" });
+    },
+  });
+
   const activeScenario = scenarios.find(s => s.id === activeScenarioId);
   const isLocked = activeScenario?.locked || false;
 
@@ -112,12 +130,21 @@ export default function Dashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setAllocDialogOpen(true)}
+            onClick={() => setLaneSheetOpen(true)}
             className="gap-1"
-            data-testid="button-add-allocation"
+            data-testid="button-manage-lanes"
+          >
+            <Route className="w-3.5 h-3.5" />
+            Lanes
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setFracDialogOpen(true)}
+            className="gap-1"
+            data-testid="button-add-job"
           >
             <Plus className="w-3.5 h-3.5" />
-            Allocation
+            Add Job
           </Button>
         </div>
       </div>
@@ -160,9 +187,62 @@ export default function Dashboard() {
         haulers={haulers}
       />
 
-      <AllocationDialog
-        open={allocDialogOpen}
-        onOpenChange={setAllocDialogOpen}
+      <FracJobDialog
+        open={fracDialogOpen}
+        onOpenChange={setFracDialogOpen}
+      />
+
+      <Sheet open={laneSheetOpen} onOpenChange={setLaneSheetOpen}>
+        <SheetContent className="w-[380px] sm:w-[420px] overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Manage Lanes</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-2">
+            {lanes.map(lane => (
+              <div key={lane.id} className="flex items-center justify-between rounded-md border p-3" data-testid={`lane-row-${lane.id}`}>
+                <div className="flex items-center gap-3">
+                  <span className="w-4 h-4 rounded-sm shrink-0" style={{ backgroundColor: lane.color }} />
+                  <span className="text-sm font-medium">{lane.name}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => { setEditLane(lane); setLaneDialogOpen(true); }}
+                    data-testid={`button-edit-lane-${lane.id}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => deleteLaneMutation.mutate(lane.id)}
+                    data-testid={`button-delete-lane-${lane.id}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              className="w-full gap-1 mt-2"
+              onClick={() => { setEditLane(null); setLaneDialogOpen(true); }}
+              data-testid="button-new-lane"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Lane
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <LaneDialog
+        open={laneDialogOpen}
+        onOpenChange={(open) => { setLaneDialogOpen(open); if (!open) setEditLane(null); }}
+        editLane={editLane}
       />
     </div>
   );

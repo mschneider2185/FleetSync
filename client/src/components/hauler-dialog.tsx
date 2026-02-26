@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
@@ -33,20 +34,30 @@ interface HaulerDialogProps {
   editHauler?: Hauler | null;
 }
 
+function getDefaults(editHauler?: Hauler | null): FormValues {
+  return {
+    name: editHauler?.name || "",
+    splitAllowed: editHauler?.splitAllowed ?? false,
+    homeArea: editHauler?.homeArea || "",
+    notes: editHauler?.notes || "",
+    defaultMaxTrucksPerShift: editHauler?.defaultMaxTrucksPerShift ?? 10,
+    defaultMinCommittedTrucksPerShift: editHauler?.defaultMinCommittedTrucksPerShift ?? 0,
+  };
+}
+
 export function HaulerDialog({ open, onOpenChange, editHauler }: HaulerDialogProps) {
   const { toast } = useToast();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: editHauler?.name || "",
-      splitAllowed: editHauler?.splitAllowed || false,
-      homeArea: editHauler?.homeArea || "",
-      notes: editHauler?.notes || "",
-      defaultMaxTrucksPerShift: editHauler?.defaultMaxTrucksPerShift || 10,
-      defaultMinCommittedTrucksPerShift: editHauler?.defaultMinCommittedTrucksPerShift || 0,
-    },
+    defaultValues: getDefaults(editHauler),
   });
+
+  useEffect(() => {
+    if (open) {
+      form.reset(getDefaults(editHauler));
+    }
+  }, [open, editHauler]);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -59,7 +70,6 @@ export function HaulerDialog({ open, onOpenChange, editHauler }: HaulerDialogPro
       queryClient.invalidateQueries({ queryKey: ["/api/haulers"] });
       toast({ title: editHauler ? "Hauler updated" : "Hauler created" });
       onOpenChange(false);
-      form.reset();
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save hauler", variant: "destructive" });
