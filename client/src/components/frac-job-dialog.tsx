@@ -30,6 +30,7 @@ const formSchema = z.object({
   totalStages: z.coerce.number().min(0).optional(),
   travelTimeHours: z.coerce.number().min(0).optional(),
   avgTonsPerLoad: z.coerce.number().min(0).optional(),
+  loadUnloadTimeHours: z.coerce.number().min(0).optional(),
   storageType: z.string().optional(),
   storageCapacity: z.coerce.number().min(0).optional(),
 });
@@ -55,6 +56,7 @@ function getDefaults(editJob?: FracJob | null): FormValues {
     totalStages: editJob?.totalStages ?? undefined,
     travelTimeHours: editJob?.travelTimeHours ?? undefined,
     avgTonsPerLoad: editJob?.avgTonsPerLoad ?? undefined,
+    loadUnloadTimeHours: editJob?.loadUnloadTimeHours ?? undefined,
     storageType: editJob?.storageType || "",
     storageCapacity: editJob?.storageCapacity ?? undefined,
   };
@@ -180,6 +182,12 @@ export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJo
                   <FormItem>
                     <FormLabel>Avg Tons/Load</FormLabel>
                     <FormControl><Input type="number" step="0.1" {...field} value={field.value ?? ""} data-testid="input-avg-tons" /></FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="loadUnloadTimeHours" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Load+Unload Time (hrs)</FormLabel>
+                    <FormControl><Input type="number" step="0.1" {...field} value={field.value ?? ""} data-testid="input-load-unload-time" /></FormControl>
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="storageType" render={({ field }) => (

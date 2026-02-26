@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { format, addDays, startOfDay } from "date-fns";
 import { ScenarioSelector } from "@/components/scenario-selector";
 import { AllocationDialog } from "@/components/allocation-dialog";
@@ -13,8 +13,16 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 
 const DAYS_VISIBLE = 21;
-const COL_WIDTH = 52;
-const LABEL_WIDTH = 200;
+const COL_WIDTH = 56;
+const LABEL_WIDTH = 220;
+
+interface EditingCell {
+  fracJobId: number;
+  haulerId: number;
+  dateStr: string;
+  allocId: number | null;
+  originalValue: number;
+}
 
 export default function AllocationGrid() {
   const { activeScenarioId } = useScenario();
@@ -22,6 +30,9 @@ export default function AllocationGrid() {
   const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -64,19 +75,23 @@ export default function AllocationGrid() {
     return schedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
   }, [schedules, startDate]);
 
-  const getTrucksForDay = (fracJobId: number, haulerId: number, dateStr: string) => {
-    const alloc = allocations.find(a =>
+  const getAllocForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
+    return allocations.find(a =>
       a.fracJobId === fracJobId && a.haulerId === haulerId &&
       a.startDate <= dateStr && a.endDate >= dateStr
-    );
-    return alloc ? alloc.trucksPerShift : 0;
-  };
+    ) || null;
+  }, [allocations]);
 
-  const getTotalForFracDay = (fracJobId: number, dateStr: string) => {
+  const getTrucksForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
+    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
+    return alloc ? alloc.trucksPerShift : 0;
+  }, [getAllocForDay]);
+
+  const getTotalForFracDay = useCallback((fracJobId: number, dateStr: string) => {
     return allocations
       .filter(a => a.fracJobId === fracJobId && a.startDate <= dateStr && a.endDate >= dateStr)
       .reduce((sum, a) => sum + a.trucksPerShift, 0);
-  };
+  }, [allocations]);
 
   const getCellColor = (assigned: number, required: number) => {
     if (required === 0) return "";
@@ -92,11 +107,168 @@ export default function AllocationGrid() {
 
   const today = format(new Date(), "yyyy-MM-dd");
 
+  const updateAllocMutation = useMutation({
+    mutationFn: async ({ allocId, trucksPerShift }: { allocId: number; trucksPerShift: number }) => {
+      return apiRequest("PATCH", `/api/allocations/${allocId}`, { trucksPerShift });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update allocation", variant: "destructive" });
+    },
+  });
+
+  const createAllocMutation = useMutation({
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number }) => {
+      return apiRequest("POST", "/api/allocations", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to create allocation", variant: "destructive" });
+    },
+  });
+
+  const deleteAllocMutation = useMutation({
+    mutationFn: async (allocId: number) => {
+      return apiRequest("DELETE", `/api/allocations/${allocId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to delete allocation", variant: "destructive" });
+    },
+  });
+
+  const startEditing = (fracJobId: number, haulerId: number, dateStr: string) => {
+    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
+    const currentValue = alloc ? alloc.trucksPerShift : 0;
+    setEditingCell({
+      fracJobId,
+      haulerId,
+      dateStr,
+      allocId: alloc?.id || null,
+      originalValue: currentValue,
+    });
+    setEditValue(currentValue > 0 ? currentValue.toString() : "");
+  };
+
+  const cancelEditing = () => {
+    setEditingCell(null);
+    setEditValue("");
+  };
+
+  const splitAndEditMutation = useMutation({
+    mutationFn: async ({ alloc, dateStr, newValue }: { alloc: AllocationBlock; dateStr: string; newValue: number }) => {
+      const prevDay = format(addDays(new Date(dateStr + "T00:00:00"), -1), "yyyy-MM-dd");
+      const nextDay = format(addDays(new Date(dateStr + "T00:00:00"), 1), "yyyy-MM-dd");
+
+      await apiRequest("DELETE", `/api/allocations/${alloc.id}`);
+
+      if (alloc.startDate < dateStr) {
+        await apiRequest("POST", "/api/allocations", {
+          scenarioId: alloc.scenarioId,
+          fracJobId: alloc.fracJobId,
+          haulerId: alloc.haulerId,
+          startDate: alloc.startDate,
+          endDate: prevDay,
+          trucksPerShift: alloc.trucksPerShift,
+        });
+      }
+
+      if (newValue > 0) {
+        await apiRequest("POST", "/api/allocations", {
+          scenarioId: alloc.scenarioId,
+          fracJobId: alloc.fracJobId,
+          haulerId: alloc.haulerId,
+          startDate: dateStr,
+          endDate: dateStr,
+          trucksPerShift: newValue,
+        });
+      }
+
+      if (alloc.endDate > dateStr) {
+        await apiRequest("POST", "/api/allocations", {
+          scenarioId: alloc.scenarioId,
+          fracJobId: alloc.fracJobId,
+          haulerId: alloc.haulerId,
+          startDate: nextDay,
+          endDate: alloc.endDate,
+          trucksPerShift: alloc.trucksPerShift,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update allocation", variant: "destructive" });
+    },
+  });
+
+  const saveEdit = () => {
+    if (!editingCell || !activeScenarioId) return;
+    const newValue = parseInt(editValue) || 0;
+
+    if (newValue === editingCell.originalValue) {
+      cancelEditing();
+      return;
+    }
+
+    if (editingCell.allocId) {
+      const alloc = allocations.find(a => a.id === editingCell.allocId);
+      if (alloc && (alloc.startDate < editingCell.dateStr || alloc.endDate > editingCell.dateStr)) {
+        splitAndEditMutation.mutate({ alloc, dateStr: editingCell.dateStr, newValue });
+      } else if (newValue === 0) {
+        deleteAllocMutation.mutate(editingCell.allocId);
+      } else {
+        updateAllocMutation.mutate({ allocId: editingCell.allocId, trucksPerShift: newValue });
+      }
+    } else if (newValue > 0) {
+      createAllocMutation.mutate({
+        fracJobId: editingCell.fracJobId,
+        haulerId: editingCell.haulerId,
+        startDate: editingCell.dateStr,
+        endDate: editingCell.dateStr,
+        trucksPerShift: newValue,
+        scenarioId: activeScenarioId,
+      });
+    }
+
+    cancelEditing();
+  };
+
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingCell]);
+
+  const allHaulerIdsForFrac = useMemo(() => {
+    const map = new Map<number, number[]>();
+    for (const schedule of activeSchedules) {
+      const fracAllocations = allocations.filter(a => a.fracJobId === schedule.fracJobId);
+      const haulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+      map.set(schedule.fracJobId, haulerIds);
+    }
+    return map;
+  }, [activeSchedules, allocations]);
+
+  const tableWidth = LABEL_WIDTH + DAYS_VISIBLE * COL_WIDTH;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b bg-background">
+      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b bg-background shrink-0">
         <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="text-lg font-semibold tracking-tight">Allocation Grid</h1>
+          <h1 className="text-lg font-semibold tracking-tight" data-testid="heading-allocation-grid">Allocation Grid</h1>
           <ScenarioSelector />
         </div>
         <div className="flex items-center gap-2">
@@ -125,17 +297,23 @@ export default function AllocationGrid() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-auto">
-          <table className="border-collapse text-xs" style={{ tableLayout: "fixed", width: LABEL_WIDTH + DAYS_VISIBLE * COL_WIDTH }}>
+        <div className="flex-1 overflow-auto relative">
+          <table
+            className="border-collapse text-xs"
+            style={{ tableLayout: "fixed", minWidth: tableWidth, width: tableWidth }}
+          >
             <colgroup>
-              <col style={{ width: LABEL_WIDTH }} />
+              <col style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }} />
               {dates.map((_, i) => (
-                <col key={i} style={{ width: COL_WIDTH }} />
+                <col key={i} style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} />
               ))}
             </colgroup>
-            <thead className="sticky top-0 z-20 bg-background">
+            <thead className="sticky top-0 z-20">
               <tr>
-                <th className="sticky left-0 z-30 bg-background border-b border-r px-3 py-2 text-left font-medium text-muted-foreground" style={{ width: LABEL_WIDTH }}>
+                <th
+                  className="sticky left-0 z-30 bg-background border-b border-r px-3 py-2 text-left font-medium text-muted-foreground"
+                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                >
                   Frac / Hauler
                 </th>
                 {dates.map((date, i) => {
@@ -145,111 +323,178 @@ export default function AllocationGrid() {
                   return (
                     <th
                       key={i}
-                      className={`border-b border-r px-1 py-1 text-center font-normal ${
-                        isToday ? "bg-primary/5 font-semibold text-primary" :
-                        isWeekend ? "bg-muted/30 text-muted-foreground" :
-                        "text-muted-foreground"
+                      className={`border-b border-r px-1 py-1.5 text-center font-normal ${
+                        isToday ? "bg-primary/10 font-semibold text-primary" :
+                        isWeekend ? "bg-muted/40 text-muted-foreground" :
+                        "bg-background text-muted-foreground"
                       }`}
-                      style={{ width: COL_WIDTH }}
+                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                     >
-                      <div className="text-[10px]">{format(date, "EEE")}</div>
-                      <div>{format(date, "M/d")}</div>
+                      <div className="text-[10px] leading-tight">{format(date, "EEE")}</div>
+                      <div className="text-xs leading-tight">{format(date, "M/d")}</div>
                     </th>
                   );
                 })}
               </tr>
             </thead>
-            <tbody>
-              {activeSchedules.map(schedule => {
-                const frac = fracMap.get(schedule.fracJobId);
-                const lane = frac ? laneMap.get(frac.laneId) : null;
-                if (!frac) return null;
 
-                const fracAllocations = allocations.filter(a => a.fracJobId === schedule.fracJobId);
-                const uniqueHaulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+            {activeSchedules.map(schedule => {
+              const frac = fracMap.get(schedule.fracJobId);
+              const lane = frac ? laneMap.get(frac.laneId) : null;
+              if (!frac) return null;
 
-                return (
-                  <tbody key={schedule.id}>
-                    <tr className="bg-muted/40">
-                      <td className="sticky left-0 z-10 bg-muted/40 border-b border-r px-3 py-2" style={{ width: LABEL_WIDTH }}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {lane && (
-                              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: lane.color }} />
-                            )}
-                            <span className="font-semibold text-sm truncate" data-testid={`text-grid-frac-${frac.id}`}>{frac.padName}</span>
-                            <Badge variant="secondary" className="text-[10px] shrink-0">
-                              Needs {schedule.requiredTrucksPerShift}
-                            </Badge>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 shrink-0"
-                            onClick={() => {
-                              setAllocDialogFrac(frac.id);
-                              setAllocDialogOpen(true);
-                            }}
-                            data-testid={`button-add-alloc-${frac.id}`}
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
+              const uniqueHaulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) || [];
+
+              return (
+                <tbody key={schedule.id}>
+                  <tr className="bg-muted/40">
+                    <td
+                      className="sticky left-0 z-10 bg-muted/40 border-b border-r px-3 py-2"
+                      style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {lane && (
+                            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: lane.color }} />
+                          )}
+                          <span className="font-semibold text-sm truncate" data-testid={`text-grid-frac-${frac.id}`}>{frac.padName}</span>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">
+                            Needs {schedule.requiredTrucksPerShift}
+                          </Badge>
                         </div>
-                      </td>
-                      {dateStrings.map((ds, i) => {
-                        const active = isSchedActiveOnDate(schedule, ds);
-                        if (!active) return <td key={i} className="border-b border-r bg-muted/20" style={{ width: COL_WIDTH }} />;
-                        const total = getTotalForFracDay(schedule.fracJobId, ds);
-                        const diff = total - schedule.requiredTrucksPerShift;
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => {
+                            setAllocDialogFrac(frac.id);
+                            setAllocDialogOpen(true);
+                          }}
+                          data-testid={`button-add-alloc-${frac.id}`}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </td>
+                    {dateStrings.map((ds, i) => {
+                      const active = isSchedActiveOnDate(schedule, ds);
+                      if (!active) {
                         return (
                           <td
                             key={i}
-                            className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, schedule.requiredTrucksPerShift)}`}
-                            style={{ width: COL_WIDTH }}
-                          >
-                            {total > 0 ? total : ""}
-                            {diff !== 0 && total > 0 && (
-                              <div className="text-[9px] font-normal">
-                                {diff > 0 ? `+${diff}` : diff}
-                              </div>
-                            )}
-                          </td>
+                            className="border-b border-r bg-muted/20"
+                            style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                          />
                         );
-                      })}
-                    </tr>
-
-                    {uniqueHaulerIds.map(haulerId => {
-                      const hauler = haulerMap.get(haulerId);
-                      if (!hauler) return null;
+                      }
+                      const total = getTotalForFracDay(schedule.fracJobId, ds);
+                      const diff = total - schedule.requiredTrucksPerShift;
                       return (
-                        <tr key={`${schedule.id}-${haulerId}`}>
-                          <td className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1.5 pl-8" style={{ width: LABEL_WIDTH }}>
-                            <div className="flex items-center justify-between">
-                              <span className="text-muted-foreground truncate">{hauler.name}</span>
-                              <span className="text-[10px] text-muted-foreground shrink-0">
-                                max {hauler.defaultMaxTrucksPerShift}
-                              </span>
+                        <td
+                          key={i}
+                          className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, schedule.requiredTrucksPerShift)}`}
+                          style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                          data-testid={`cell-frac-total-${frac.id}-${ds}`}
+                        >
+                          <div className="leading-tight">{total > 0 ? total : ""}</div>
+                          {diff !== 0 && total > 0 && (
+                            <div className={`text-[9px] font-normal leading-tight ${diff < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                              {diff > 0 ? `+${diff}` : diff}
                             </div>
-                          </td>
-                          {dateStrings.map((ds, i) => {
-                            const active = isSchedActiveOnDate(schedule, ds);
-                            if (!active) return <td key={i} className="border-b border-r" style={{ width: COL_WIDTH }} />;
-                            const trucks = getTrucksForDay(schedule.fracJobId, haulerId, ds);
-                            return (
-                              <td key={i} className="border-b border-r text-center py-1 text-muted-foreground" style={{ width: COL_WIDTH }}>
-                                {trucks > 0 ? trucks : ""}
-                              </td>
-                            );
-                          })}
-                        </tr>
+                          )}
+                        </td>
                       );
                     })}
-                  </tbody>
-                );
-              })}
+                  </tr>
 
+                  {uniqueHaulerIds.map(haulerId => {
+                    const hauler = haulerMap.get(haulerId);
+                    if (!hauler) return null;
+                    return (
+                      <tr key={`${schedule.id}-${haulerId}`}>
+                        <td
+                          className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1.5 pl-8"
+                          style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground truncate">{hauler.name}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
+                              max {hauler.defaultMaxTrucksPerShift}
+                            </span>
+                          </div>
+                        </td>
+                        {dateStrings.map((ds, i) => {
+                          const active = isSchedActiveOnDate(schedule, ds);
+                          if (!active) {
+                            return (
+                              <td
+                                key={i}
+                                className="border-b border-r"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                              />
+                            );
+                          }
+                          const trucks = getTrucksForDay(schedule.fracJobId, haulerId, ds);
+                          const isEditing = editingCell?.fracJobId === schedule.fracJobId &&
+                            editingCell?.haulerId === haulerId &&
+                            editingCell?.dateStr === ds;
+
+                          if (isEditing) {
+                            return (
+                              <td
+                                key={i}
+                                className="border-b border-r p-0"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                              >
+                                <input
+                                  ref={editInputRef}
+                                  type="number"
+                                  min={0}
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") saveEdit();
+                                    if (e.key === "Escape") cancelEditing();
+                                    if (e.key === "Tab") {
+                                      e.preventDefault();
+                                      saveEdit();
+                                    }
+                                  }}
+                                  onBlur={saveEdit}
+                                  className="w-full h-full text-center text-xs bg-primary/10 border-2 border-primary outline-none py-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                                  data-testid={`input-cell-edit-${schedule.fracJobId}-${haulerId}-${ds}`}
+                                />
+                              </td>
+                            );
+                          }
+
+                          return (
+                            <td
+                              key={i}
+                              className="border-b border-r text-center py-1 text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                              onClick={() => startEditing(schedule.fracJobId, haulerId, ds)}
+                              data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}`}
+                            >
+                              {trucks > 0 ? trucks : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              );
+            })}
+
+            <tbody>
               <tr className="bg-muted/30">
-                <td className="sticky left-0 z-10 bg-muted/30 border-b border-r px-3 py-2 font-semibold text-sm" style={{ width: LABEL_WIDTH }}>
+                <td
+                  className="sticky left-0 z-10 bg-muted/30 border-b border-r px-3 py-2 font-semibold text-sm"
+                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                  data-testid="text-hauler-totals"
+                >
                   Hauler Totals
                 </td>
                 {dateStrings.map((ds, i) => {
@@ -257,7 +502,12 @@ export default function AllocationGrid() {
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
                   return (
-                    <td key={i} className="border-b border-r text-center font-semibold py-2" style={{ width: COL_WIDTH }}>
+                    <td
+                      key={i}
+                      className="border-b border-r text-center font-semibold py-2"
+                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                      data-testid={`cell-total-${ds}`}
+                    >
                       {totalAllDay > 0 ? totalAllDay : ""}
                     </td>
                   );

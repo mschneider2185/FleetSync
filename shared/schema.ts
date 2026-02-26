@@ -34,6 +34,7 @@ export const fracJobs = pgTable("frac_jobs", {
   totalStages: integer("total_stages"),
   travelTimeHours: real("travel_time_hours"),
   avgTonsPerLoad: real("avg_tons_per_load"),
+  loadUnloadTimeHours: real("load_unload_time_hours"),
   storageType: text("storage_type"),
   storageCapacity: integer("storage_capacity"),
   createdAt: timestamp("created_at").defaultNow(),

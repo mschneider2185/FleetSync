@@ -21,6 +21,7 @@ interface TruckRecommendation {
   cycleTime: number;
   loadsPerShift: number;
   tonsPerTruckPerShift: number;
+  loadUnloadTime: number;
 }
 
 function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null {
@@ -29,11 +30,11 @@ function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null 
 
   const tonsPerDay = fracJob.stagesPerDay * fracJob.tonsPerStage;
   const tonsPerShift = tonsPerDay / 2;
-  const loadUnloadTime = 1.5;
+  const loadUnloadTime = fracJob.loadUnloadTimeHours ?? 1.5;
   const cycleTime = fracJob.travelTimeHours * 2 + loadUnloadTime;
-  const loadsPerShift = 12 / cycleTime;
+  const loadsPerShift = Math.floor(12 / cycleTime);
   const tonsPerTruckPerShift = loadsPerShift * fracJob.avgTonsPerLoad;
-  const recommended = Math.ceil(tonsPerShift / tonsPerTruckPerShift);
+  const recommended = tonsPerTruckPerShift > 0 ? Math.ceil(tonsPerShift / tonsPerTruckPerShift) : 0;
 
   return {
     value: recommended,
@@ -42,6 +43,7 @@ function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null 
     cycleTime,
     loadsPerShift,
     tonsPerTruckPerShift,
+    loadUnloadTime,
   };
 }
 
@@ -206,7 +208,9 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Load + unload time</span>
-                    <span className="font-mono text-foreground">1.5 hrs</span>
+                    <span className="font-mono text-foreground">
+                      {recommendation.loadUnloadTime} hrs{!fracJob.loadUnloadTimeHours && " (default)"}
+                    </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Cycle time</span>
@@ -218,13 +222,13 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
                   <div className="flex justify-between text-muted-foreground">
                     <span>Loads per truck per shift</span>
                     <span className="font-mono text-foreground" data-testid="text-loads-per-shift">
-                      12 / {recommendation.cycleTime.toFixed(1)} = {recommendation.loadsPerShift.toFixed(2)}
+                      ⌊12 / {recommendation.cycleTime.toFixed(1)}⌋ = {recommendation.loadsPerShift}
                     </span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>Tons per truck per shift</span>
                     <span className="font-mono text-foreground" data-testid="text-tons-per-truck">
-                      {recommendation.loadsPerShift.toFixed(2)} × {fracJob.avgTonsPerLoad} = {recommendation.tonsPerTruckPerShift.toFixed(1)} tons
+                      {recommendation.loadsPerShift} × {fracJob.avgTonsPerLoad} = {recommendation.tonsPerTruckPerShift.toFixed(1)} tons
                     </span>
                   </div>
                   <Separator />
