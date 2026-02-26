@@ -68,8 +68,8 @@ export function LaneDialog({ open, onOpenChange, editLane }: LaneDialogProps) {
       toast({ title: editLane ? "Lane updated" : "Lane created" });
       onOpenChange(false);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save lane", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to save lane", variant: "destructive" });
     },
   });
 

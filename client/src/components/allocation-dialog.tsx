@@ -67,8 +67,8 @@ export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFr
       onOpenChange(false);
       form.reset();
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save allocation", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to save allocation", variant: "destructive" });
     },
   });
 

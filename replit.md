@@ -31,6 +31,8 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Lane management panel (create, rename, recolor, delete lanes)
 - Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
 - Step-by-step truck recommendation breakdown in demand tab
+- Chained "Add Job" workflow from dashboard: creates frac job then prompts for schedule dates
+- All error toasts show actual server validation errors (field-level Zod errors with path info)
 
 ## Project Structure
 ```

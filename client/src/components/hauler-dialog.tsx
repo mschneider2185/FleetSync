@@ -71,8 +71,8 @@ export function HaulerDialog({ open, onOpenChange, editHauler }: HaulerDialogPro
       toast({ title: editHauler ? "Hauler updated" : "Hauler created" });
       onOpenChange(false);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save hauler", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to save hauler", variant: "destructive" });
     },
   });
 

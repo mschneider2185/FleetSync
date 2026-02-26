@@ -33,7 +33,7 @@ export async function registerRoutes(
       const data = await storage.createLane(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -44,7 +44,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -63,7 +63,7 @@ export async function registerRoutes(
       const data = await storage.createScenario(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -74,7 +74,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -137,7 +137,7 @@ export async function registerRoutes(
       const data = await storage.createFracJob(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -148,7 +148,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -169,7 +169,7 @@ export async function registerRoutes(
       const data = await storage.createSchedule(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -180,7 +180,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -199,7 +199,7 @@ export async function registerRoutes(
       const data = await storage.createHauler(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -210,7 +210,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -229,7 +229,7 @@ export async function registerRoutes(
       const data = await storage.createCapacityException(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -250,7 +250,7 @@ export async function registerRoutes(
       const data = await storage.createAllocation(validated);
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });
@@ -261,7 +261,7 @@ export async function registerRoutes(
       if (!data) return res.status(404).json({ message: "Not found" });
       res.json(data);
     } catch (e) {
-      if (e instanceof ZodError) return res.status(400).json({ message: e.errors[0]?.message || "Validation error" });
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
       throw e;
     }
   });

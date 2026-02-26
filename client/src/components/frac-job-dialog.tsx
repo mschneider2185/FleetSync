@@ -40,6 +40,7 @@ interface FracJobDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editJob?: FracJob | null;
+  onCreated?: (job: FracJob) => void;
 }
 
 function getDefaults(editJob?: FracJob | null): FormValues {
@@ -59,7 +60,7 @@ function getDefaults(editJob?: FracJob | null): FormValues {
   };
 }
 
-export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProps) {
+export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJobDialogProps) {
   const { toast } = useToast();
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
 
@@ -81,13 +82,22 @@ export function FracJobDialog({ open, onOpenChange, editJob }: FracJobDialogProp
       }
       return apiRequest("POST", "/api/frac-jobs", values);
     },
-    onSuccess: () => {
+    onSuccess: async (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs"] });
-      toast({ title: editJob ? "Frac job updated" : "Frac job created" });
+      if (!editJob && onCreated) {
+        try {
+          const newJob = await response.json();
+          onCreated(newJob);
+        } catch {
+          toast({ title: "Frac job created" });
+        }
+      } else {
+        toast({ title: editJob ? "Frac job updated" : "Frac job created" });
+      }
       onOpenChange(false);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to save frac job", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to save frac job", variant: "destructive" });
     },
   });
 

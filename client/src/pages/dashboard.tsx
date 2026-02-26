@@ -10,11 +10,19 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Plus, AlertTriangle, Pencil, Trash2, Route } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 
 interface Conflict {
@@ -34,6 +42,11 @@ export default function Dashboard() {
   const [laneSheetOpen, setLaneSheetOpen] = useState(false);
   const [laneDialogOpen, setLaneDialogOpen] = useState(false);
   const [editLane, setEditLane] = useState<Lane | null>(null);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [newJobForSchedule, setNewJobForSchedule] = useState<FracJob | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    startDate: "", endDate: "", requiredTrucksPerShift: 10, transitionDaysAfter: 2, status: "planned",
+  });
 
   const { data: lanes = [], isLoading: lanesLoading } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [], isLoading: fracLoading } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -90,10 +103,45 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/lanes"] });
       toast({ title: "Lane deleted" });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Cannot delete a lane with frac jobs assigned", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to delete lane", variant: "destructive" });
     },
   });
+
+  const addScheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeScenarioId || !newJobForSchedule) return;
+      return apiRequest("POST", "/api/schedules", {
+        scenarioId: activeScenarioId,
+        fracJobId: newJobForSchedule.id,
+        plannedStartDate: scheduleForm.startDate,
+        plannedEndDate: scheduleForm.endDate,
+        requiredTrucksPerShift: scheduleForm.requiredTrucksPerShift,
+        transitionDaysAfter: scheduleForm.transitionDaysAfter,
+        status: scheduleForm.status,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "schedules"] });
+      setScheduleDialogOpen(false);
+      setNewJobForSchedule(null);
+      toast({ title: "Job created and scheduled" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to add schedule", variant: "destructive" });
+    },
+  });
+
+  const handleJobCreated = (job: FracJob) => {
+    if (activeScenarioId) {
+      setNewJobForSchedule(job);
+      setScheduleForm({ startDate: "", endDate: "", requiredTrucksPerShift: 10, transitionDaysAfter: 2, status: "planned" });
+      setScheduleDialogOpen(true);
+      toast({ title: "Frac job created", description: "Now set the schedule dates" });
+    } else {
+      toast({ title: "Frac job created" });
+    }
+  };
 
   const activeScenario = scenarios.find(s => s.id === activeScenarioId);
   const isLocked = activeScenario?.locked || false;
@@ -190,7 +238,103 @@ export default function Dashboard() {
       <FracJobDialog
         open={fracDialogOpen}
         onOpenChange={setFracDialogOpen}
+        onCreated={handleJobCreated}
       />
+
+      <Dialog open={scheduleDialogOpen} onOpenChange={(open) => {
+        setScheduleDialogOpen(open);
+        if (!open) setNewJobForSchedule(null);
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Schedule {newJobForSchedule?.padName || "Job"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Set the start and end dates for this job in the active scenario.
+          </p>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={scheduleForm.startDate}
+                  onChange={e => setScheduleForm(f => ({ ...f, startDate: e.target.value }))}
+                  data-testid="input-sched-start"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={scheduleForm.endDate}
+                  onChange={e => setScheduleForm(f => ({ ...f, endDate: e.target.value }))}
+                  data-testid="input-sched-end"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Trucks/Shift Required</Label>
+                <Input
+                  type="number"
+                  value={scheduleForm.requiredTrucksPerShift}
+                  onChange={e => setScheduleForm(f => ({ ...f, requiredTrucksPerShift: Number(e.target.value) }))}
+                  data-testid="input-sched-trucks"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Transition Days After</Label>
+                <Input
+                  type="number"
+                  value={scheduleForm.transitionDaysAfter}
+                  onChange={e => setScheduleForm(f => ({ ...f, transitionDaysAfter: Number(e.target.value) }))}
+                  data-testid="input-sched-transition"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Status</Label>
+              <Select
+                value={scheduleForm.status}
+                onValueChange={v => setScheduleForm(f => ({ ...f, status: v }))}
+              >
+                <SelectTrigger data-testid="select-sched-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="planned">Planned</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setScheduleDialogOpen(false);
+                setNewJobForSchedule(null);
+                toast({ title: "Frac job created", description: "You can schedule it later from the Frac Jobs page" });
+              }}
+              data-testid="button-skip-schedule"
+            >
+              Skip
+            </Button>
+            <Button
+              onClick={() => addScheduleMutation.mutate()}
+              disabled={addScheduleMutation.isPending || !scheduleForm.startDate || !scheduleForm.endDate}
+              data-testid="button-confirm-schedule"
+            >
+              {addScheduleMutation.isPending ? "Adding..." : "Add to Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Sheet open={laneSheetOpen} onOpenChange={setLaneSheetOpen}>
         <SheetContent className="w-[380px] sm:w-[420px] overflow-y-auto">
