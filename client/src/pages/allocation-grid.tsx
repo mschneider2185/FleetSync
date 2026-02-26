@@ -97,9 +97,10 @@ export default function AllocationGrid() {
   const getCellColor = (assigned: number, required: number) => {
     if (required === 0) return "";
     if (assigned === 0) return "bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400";
-    if (assigned < required) return "bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400";
-    if (assigned === required) return "bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-400";
-    return "bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400";
+    const deviation = Math.abs(assigned - required);
+    if (deviation === 0) return "bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400";
+    if (deviation === 1) return "bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400";
+    return "bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400";
   };
 
   const isSchedActiveOnDate = (schedule: ScenarioFracSchedule, dateStr: string) => {
