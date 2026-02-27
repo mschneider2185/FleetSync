@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, ChevronUp, Truck, Users, Grid3X3 } from "lucide-react";
+import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, ChevronUp, Truck, Users, Grid3X3, Eye, EyeOff, X } from "lucide-react";
 import { AllocationGridContent } from "@/pages/allocation-grid";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -43,7 +43,6 @@ function formatDate(dateStr: string) {
 const CONFLICT_LABELS: Record<string, { label: string; color: string }> = {
   frac_under_supplied: { label: "Under-Supplied Fracs", color: "text-red-600 dark:text-red-400" },
   hauler_over_capacity: { label: "Hauler Over-Capacity", color: "text-red-600 dark:text-red-400" },
-  frac_zero_buffer: { label: "Zero Buffer (Exact Match)", color: "text-amber-600 dark:text-amber-400" },
   frac_over_supplied: { label: "Over-Supplied Fracs", color: "text-amber-600 dark:text-amber-400" },
   hauler_split_warning: { label: "Hauler Split Warnings", color: "text-amber-600 dark:text-amber-400" },
 };
@@ -58,6 +57,32 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
     frac_under_supplied: true,
     hauler_over_capacity: true,
   });
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [showDismissed, setShowDismissed] = useState(false);
+
+  const dismissEntity = (type: string, entityId: number) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.add(`${type}-${entityId}`);
+      return next;
+    });
+  };
+
+  const restoreEntity = (type: string, entityId: number) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.delete(`${type}-${entityId}`);
+      return next;
+    });
+  };
+
+  const dismissAllOfType = (type: string, entityIds: number[]) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      entityIds.forEach(id => next.add(`${type}-${id}`));
+      return next;
+    });
+  };
 
   const toggleSection = (type: string) => {
     setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }));
@@ -73,10 +98,10 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
   };
 
   const groupByEntity = (items: Conflict[]) => {
-    const groups: Record<string, { entityName: string; dates: { date: string; detail: string }[] }> = {};
+    const groups: Record<string, { entityId: number; entityName: string; dates: { date: string; detail: string }[] }> = {};
     for (const c of items) {
       const key = `${c.entityId}`;
-      if (!groups[key]) groups[key] = { entityName: c.entityName, dates: [] };
+      if (!groups[key]) groups[key] = { entityId: c.entityId, entityName: c.entityName, dates: [] };
       groups[key].dates.push({ date: c.date, detail: c.detail });
     }
     for (const g of Object.values(groups)) {
@@ -111,6 +136,10 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
   const warnGroups = groupByType(warnings);
   const allGroups = { ...hardGroups, ...warnGroups };
 
+  const visibleHardCount = hardConflicts.filter(c => !dismissed.has(`${c.type}-${c.entityId}`)).length;
+  const visibleWarnCount = warnings.filter(c => !dismissed.has(`${c.type}-${c.entityId}`)).length;
+  const dismissedCount = dismissed.size;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[420px] sm:max-w-[420px] overflow-y-auto" data-testid="conflict-sheet">
@@ -121,21 +150,29 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
           </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-1">
-          {hardConflicts.length > 0 && (
-            <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {visibleHardCount > 0 && (
               <Badge variant="destructive" className="gap-1">
                 <AlertTriangle className="w-3 h-3" />
-                {hardConflicts.length} issue(s)
+                {visibleHardCount} issue(s)
               </Badge>
-            </div>
-          )}
-          {warnings.length > 0 && (
-            <div className="flex items-center gap-2 mb-3">
+            )}
+            {visibleWarnCount > 0 && (
               <Badge variant="secondary">
-                {warnings.length} warning(s)
+                {visibleWarnCount} warning(s)
               </Badge>
-            </div>
-          )}
+            )}
+            {dismissedCount > 0 && (
+              <button
+                onClick={() => setShowDismissed(!showDismissed)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                data-testid="toggle-show-dismissed"
+              >
+                {showDismissed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                {dismissedCount} dismissed
+              </button>
+            )}
+          </div>
         </div>
         <div className="mt-4 space-y-2">
           {Object.entries(allGroups).map(([type, items]) => {
@@ -144,29 +181,55 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
             const entities = groupByEntity(items);
             const isHard = type === "frac_under_supplied" || type === "hauler_over_capacity";
 
+            const visibleEntities = entities.filter(e => !dismissed.has(`${type}-${e.entityId}`));
+            const dismissedEntities = entities.filter(e => dismissed.has(`${type}-${e.entityId}`));
+            const visibleCount = items.filter(c => !dismissed.has(`${type}-${c.entityId}`)).length;
+
+            if (visibleEntities.length === 0 && !showDismissed) return null;
+
             return (
               <div key={type} className="border rounded-lg overflow-hidden" data-testid={`conflict-group-${type}`}>
-                <button
-                  onClick={() => toggleSection(type)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
-                  data-testid={`toggle-conflict-${type}`}
-                >
-                  <span className={`flex items-center gap-2 ${config.color}`}>
-                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                    {isHard && <AlertTriangle className="w-3.5 h-3.5" />}
-                    {config.label}
-                  </span>
-                  <Badge variant={isHard ? "destructive" : "secondary"} className="text-xs">
-                    {items.length}
-                  </Badge>
-                </button>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => toggleSection(type)}
+                    className="flex-1 flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
+                    data-testid={`toggle-conflict-${type}`}
+                  >
+                    <span className={`flex items-center gap-2 ${config.color}`}>
+                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      {isHard && <AlertTriangle className="w-3.5 h-3.5" />}
+                      {config.label}
+                    </span>
+                    <Badge variant={isHard ? "destructive" : "secondary"} className="text-xs">
+                      {visibleCount}
+                    </Badge>
+                  </button>
+                  {visibleEntities.length > 0 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); dismissAllOfType(type, entities.map(e => e.entityId)); }}
+                      className="px-2 py-2 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Dismiss all"
+                      data-testid={`dismiss-all-${type}`}
+                    >
+                      <EyeOff className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
                 {isExpanded && (
                   <div className="border-t divide-y">
-                    {entities.map((entity, i) => (
-                      <div key={i} className="px-3 py-2" data-testid={`conflict-entity-${type}-${i}`}>
+                    {visibleEntities.map((entity, i) => (
+                      <div key={`visible-${entity.entityId}`} className="px-3 py-2" data-testid={`conflict-entity-${type}-${i}`}>
                         <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
                           {type.startsWith("hauler") ? <Users className="w-3 h-3 text-muted-foreground" /> : <Truck className="w-3 h-3 text-muted-foreground" />}
-                          {entity.entityName}
+                          <span className="flex-1">{entity.entityName}</span>
+                          <button
+                            onClick={() => dismissEntity(type, entity.entityId)}
+                            className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                            title="Dismiss"
+                            data-testid={`dismiss-entity-${type}-${entity.entityId}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </div>
                         <div className="space-y-0.5">
                           {collapseRanges(entity.dates).map((r, j) => (
@@ -183,14 +246,30 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
                         </div>
                       </div>
                     ))}
+                    {showDismissed && dismissedEntities.map((entity) => (
+                      <div key={`dismissed-${entity.entityId}`} className="px-3 py-2 opacity-50 bg-muted/20">
+                        <div className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                          {type.startsWith("hauler") ? <Users className="w-3 h-3 text-muted-foreground" /> : <Truck className="w-3 h-3 text-muted-foreground" />}
+                          <span className="flex-1 line-through">{entity.entityName}</span>
+                          <button
+                            onClick={() => restoreEntity(type, entity.entityId)}
+                            className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                            title="Restore"
+                            data-testid={`restore-entity-${type}-${entity.entityId}`}
+                          >
+                            <Eye className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             );
           })}
-          {hardConflicts.length === 0 && warnings.length === 0 && (
+          {visibleHardCount === 0 && visibleWarnCount === 0 && (
             <div className="text-center text-sm text-muted-foreground py-8">
-              No issues or warnings found
+              {dismissedCount > 0 ? "All issues dismissed" : "No issues or warnings found"}
             </div>
           )}
         </div>
@@ -346,7 +425,7 @@ export default function Dashboard() {
   const isLocked = activeScenario?.locked || false;
 
   const hardConflicts = conflicts.filter(c => c.type === "frac_under_supplied" || c.type === "hauler_over_capacity");
-  const warnings = conflicts.filter(c => c.type === "frac_zero_buffer" || c.type === "frac_over_supplied" || c.type === "hauler_split_warning");
+  const warnings = conflicts.filter(c => c.type === "frac_over_supplied" || c.type === "hauler_split_warning");
   const uniqueHardDates = new Set(hardConflicts.map(c => c.date));
   const uniqueWarnDates = new Set(warnings.map(c => c.date));
 

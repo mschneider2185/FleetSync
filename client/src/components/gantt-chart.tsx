@@ -94,7 +94,7 @@ export function GanttChart({
   const conflictsByFracAndDate = useMemo(() => {
     const map = new Map<string, Conflict[]>();
     for (const c of conflicts) {
-      if (c.type === "frac_under_supplied" || c.type === "frac_zero_buffer") {
+      if (c.type === "frac_under_supplied") {
         const key = `${c.entityId}-${c.date}`;
         const arr = map.get(key) || [];
         arr.push(c);

@@ -305,7 +305,7 @@ export async function registerRoutes(
     ]);
 
     const conflicts: Array<{
-      type: "hauler_over_capacity" | "frac_under_supplied" | "frac_zero_buffer" | "frac_over_supplied" | "hauler_split_warning";
+      type: "hauler_over_capacity" | "frac_under_supplied" | "frac_over_supplied" | "hauler_split_warning";
       date: string;
       entityId: number;
       entityName: string;
@@ -370,10 +370,11 @@ export async function registerRoutes(
 
       for (const schedule of schedules) {
         if (schedule.plannedStartDate <= dateStr && schedule.plannedEndDate >= dateStr) {
+          const frac = fracMap.get(schedule.fracJobId);
+          if (!frac) continue;
           const assigned = fracAssignments.get(schedule.fracJobId) || 0;
           const required = schedule.requiredTrucksPerShift;
-          const frac = fracMap.get(schedule.fracJobId);
-          const name = frac?.padName || `Frac #${schedule.fracJobId}`;
+          const name = frac.padName || frac.wellName || `Frac #${schedule.fracJobId}`;
 
           if (assigned < required) {
             conflicts.push({
@@ -382,14 +383,6 @@ export async function registerRoutes(
               entityId: schedule.fracJobId,
               entityName: name,
               detail: `Assigned ${assigned} trucks, needs ${required} (short ${required - assigned})`,
-            });
-          } else if (assigned === required && required > 0) {
-            conflicts.push({
-              type: "frac_zero_buffer",
-              date: dateStr,
-              entityId: schedule.fracJobId,
-              entityName: name,
-              detail: `Exactly at required (${required} trucks), no buffer`,
             });
           } else if (assigned > required && required > 0) {
             conflicts.push({

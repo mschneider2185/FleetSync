@@ -28,7 +28,8 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Scenario management (Baseline/Forecast/Sandbox) with clone and compare
 - Frac job builder with sand plan details (including configurable load+unload time)
 - Hauler management with capacity tracking
-- Real-time conflict detection (over-capacity, under-supplied, zero buffer)
+- Real-time conflict detection (over-capacity, under-supplied, over-supplied, hauler split warnings) with orphaned schedule protection
+- Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), and hauler assignments
 - Lane management panel (create, rename, recolor, delete lanes)
 - Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
