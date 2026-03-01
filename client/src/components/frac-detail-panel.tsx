@@ -1,9 +1,20 @@
 import { format, parseISO } from "date-fns";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import type { FracJob, ScenarioFracSchedule, AllocationBlock, Hauler } from "@shared/schema";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Trash2, Plus } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, FracDailyEvent } from "@shared/schema";
 
 interface FracDetailPanelProps {
   open: boolean;
@@ -12,6 +23,7 @@ interface FracDetailPanelProps {
   schedule: ScenarioFracSchedule | null;
   allocations: AllocationBlock[];
   haulers: Hauler[];
+  scenarioId?: number;
 }
 
 interface TruckRecommendation {
@@ -23,6 +35,17 @@ interface TruckRecommendation {
   tonsPerTruckPerShift: number;
   loadUnloadTime: number;
 }
+
+const EVENT_CATEGORIES = [
+  { value: "NPT", label: "NPT" },
+  { value: "MECHANICAL", label: "Mechanical" },
+  { value: "WEATHER", label: "Weather" },
+  { value: "WATER_LIMITATION", label: "Water Limitation" },
+  { value: "SAND_SUPPLY", label: "Sand Supply" },
+  { value: "TRUCK_SHORTAGE", label: "Truck Shortage" },
+  { value: "SWA", label: "Stop Work Authority" },
+  { value: "OTHER", label: "Other" },
+];
 
 function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null {
   if (!fracJob.stagesPerDay || !fracJob.tonsPerStage) return null;
@@ -47,7 +70,21 @@ function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null 
   };
 }
 
-export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers }: FracDetailPanelProps) {
+function getCategoryColor(category: string): string {
+  const colors: Record<string, string> = {
+    NPT: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+    MECHANICAL: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+    WEATHER: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+    WATER_LIMITATION: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
+    SAND_SUPPLY: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+    TRUCK_SHORTAGE: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+    SWA: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
+    OTHER: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400",
+  };
+  return colors[category] || colors.OTHER;
+}
+
+export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers, scenarioId }: FracDetailPanelProps) {
   if (!fracJob) return null;
 
   const fracAllocations = allocations.filter(a => a.fracJobId === fracJob.id);
@@ -83,6 +120,7 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
             <TabsTrigger value="sand-info" className="flex-1" data-testid="tab-sand-info">Sand Info</TabsTrigger>
             <TabsTrigger value="demand" className="flex-1" data-testid="tab-demand">Demand</TabsTrigger>
             <TabsTrigger value="assignments" className="flex-1" data-testid="tab-assignments">Haulers</TabsTrigger>
+            <TabsTrigger value="journal" className="flex-1" data-testid="tab-journal">Journal</TabsTrigger>
           </TabsList>
 
           <TabsContent value="sand-info" className="space-y-4 pt-2">
@@ -271,8 +309,196 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
               })
             )}
           </TabsContent>
+
+          <TabsContent value="journal" className="space-y-3 pt-2">
+            <JournalTab fracJobId={fracJob.id} scenarioId={scenarioId} />
+          </TabsContent>
         </Tabs>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?: number }) {
+  const { toast } = useToast();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newCategory, setNewCategory] = useState("");
+  const [newHoursLost, setNewHoursLost] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+
+  const { data: events = [], isLoading } = useQuery<FracDailyEvent[]>({
+    queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId],
+    queryFn: async () => {
+      if (!scenarioId) return [];
+      const res = await fetch(`/api/frac-jobs/${fracJobId}/events?scenarioId=${scenarioId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!scenarioId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const body: any = {
+        scenarioId,
+        date: newDate,
+        category: newCategory,
+        notes: newNotes || undefined,
+      };
+      if (newHoursLost) body.hoursLost = parseFloat(newHoursLost);
+      const res = await apiRequest("POST", `/api/frac-jobs/${fracJobId}/events`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      setShowAdd(false);
+      setNewCategory("");
+      setNewHoursLost("");
+      setNewNotes("");
+      toast({ title: "Journal entry added" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/events/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      toast({ title: "Journal entry deleted" });
+    },
+  });
+
+  if (!scenarioId) {
+    return (
+      <div className="text-sm text-muted-foreground text-center py-8">
+        Select a scenario to view journal entries
+      </div>
+    );
+  }
+
+  const sortedEvents = [...events].sort((a, b) => b.date.localeCompare(a.date));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Daily Log ({events.length})</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1"
+          onClick={() => setShowAdd(!showAdd)}
+          data-testid="button-add-journal"
+        >
+          <Plus className="w-3 h-3" />
+          Add Entry
+        </Button>
+      </div>
+
+      {showAdd && (
+        <div className="rounded-md border p-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Date</p>
+              <Input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                data-testid="input-journal-date"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Category</p>
+              <Select value={newCategory} onValueChange={setNewCategory}>
+                <SelectTrigger data-testid="select-journal-category">
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {EVENT_CATEGORIES.map(c => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Hours Lost (optional)</p>
+            <Input
+              type="number"
+              step="0.5"
+              placeholder="e.g., 4"
+              value={newHoursLost}
+              onChange={(e) => setNewHoursLost(e.target.value)}
+              data-testid="input-journal-hours"
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Notes</p>
+            <Textarea
+              placeholder="What happened..."
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              rows={2}
+              data-testid="input-journal-notes"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => createMutation.mutate()}
+              disabled={!newCategory || !newDate || createMutation.isPending}
+              data-testid="button-save-journal"
+            >
+              {createMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowAdd(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <div className="text-sm text-muted-foreground text-center py-4">Loading...</div>}
+
+      {!isLoading && sortedEvents.length === 0 && (
+        <div className="text-sm text-muted-foreground text-center py-8">
+          No journal entries yet
+        </div>
+      )}
+
+      {sortedEvents.map(event => (
+        <div key={event.id} className="rounded-md border p-3 space-y-1" data-testid={`journal-entry-${event.id}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground">
+                {format(parseISO(event.date), "MMM d")}
+              </span>
+              <span className={`text-xs px-1.5 py-0.5 rounded ${getCategoryColor(event.category)}`}>
+                {EVENT_CATEGORIES.find(c => c.value === event.category)?.label || event.category}
+              </span>
+              {event.hoursLost && (
+                <span className="text-xs text-muted-foreground">{event.hoursLost}h lost</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+              onClick={() => deleteMutation.mutate(event.id)}
+              data-testid={`button-delete-journal-${event.id}`}
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+          {event.notes && (
+            <p className="text-xs text-muted-foreground">{event.notes}</p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

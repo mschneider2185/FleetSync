@@ -17,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { Lane, FracJob } from "@shared/schema";
+import { Separator } from "@/components/ui/separator";
+import type { Lane, FracJob, Preset } from "@shared/schema";
 
 const formSchema = z.object({
   padName: z.string().min(1, "Pad name is required"),
@@ -65,6 +66,10 @@ function getDefaults(editJob?: FracJob | null): FormValues {
 export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJobDialogProps) {
   const { toast } = useToast();
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
+  const { data: allPresets = [] } = useQuery<Preset[]>({ queryKey: ["/api/presets"] });
+
+  const storagePresets = allPresets.filter(p => p.presetType === "storage");
+  const sandDesignPresets = allPresets.filter(p => p.presetType === "sand_design");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -76,6 +81,20 @@ export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJo
       form.reset(getDefaults(editJob));
     }
   }, [open, editJob]);
+
+  const applyPreset = (preset: Preset) => {
+    try {
+      const data = JSON.parse(preset.data);
+      for (const [key, value] of Object.entries(data)) {
+        if (key in formSchema.shape) {
+          form.setValue(key as keyof FormValues, value as any, { shouldDirty: true });
+        }
+      }
+      toast({ title: "Preset applied", description: `Applied "${preset.name}"` });
+    } catch {
+      toast({ title: "Error", description: "Failed to apply preset", variant: "destructive" });
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -150,6 +169,56 @@ export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJo
                 </FormItem>
               )} />
             </div>
+
+            {(storagePresets.length > 0 || sandDesignPresets.length > 0) && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Quick Presets</p>
+                <div className="grid grid-cols-2 gap-4">
+                  {storagePresets.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Storage Preset</p>
+                      <Select onValueChange={(val) => {
+                        if (val === "__clear__") return;
+                        const preset = storagePresets.find(p => p.id.toString() === val);
+                        if (preset) applyPreset(preset);
+                      }}>
+                        <SelectTrigger data-testid="select-storage-preset">
+                          <SelectValue placeholder="Select preset..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {storagePresets.map(p => (
+                            <SelectItem key={p.id} value={p.id.toString()} data-testid={`preset-storage-${p.id}`}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {sandDesignPresets.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Sand Design Preset</p>
+                      <Select onValueChange={(val) => {
+                        if (val === "__clear__") return;
+                        const preset = sandDesignPresets.find(p => p.id.toString() === val);
+                        if (preset) applyPreset(preset);
+                      }}>
+                        <SelectTrigger data-testid="select-sand-preset">
+                          <SelectValue placeholder="Select preset..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sandDesignPresets.map(p => (
+                            <SelectItem key={p.id} value={p.id.toString()} data-testid={`preset-sand-${p.id}`}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <p className="text-sm font-medium mb-3">Sand Plan</p>

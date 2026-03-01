@@ -1,6 +1,7 @@
 import {
   lanes, scenarios, fracJobs, scenarioFracSchedules,
   haulers, haulerCapacityExceptions, allocationBlocks,
+  presets, fracDailyEvents,
   type Lane, type InsertLane,
   type Scenario, type InsertScenario,
   type FracJob, type InsertFracJob,
@@ -8,6 +9,8 @@ import {
   type Hauler, type InsertHauler,
   type HaulerCapacityException, type InsertHaulerCapacityException,
   type AllocationBlock, type InsertAllocationBlock,
+  type Preset, type InsertPreset,
+  type FracDailyEvent, type InsertFracDailyEvent,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, lte, gte, ne } from "drizzle-orm";
@@ -55,6 +58,17 @@ export interface IStorage {
   updateAllocation(id: number, allocation: Partial<InsertAllocationBlock>): Promise<AllocationBlock | undefined>;
   deleteAllocation(id: number): Promise<void>;
   deleteAllocationsByScenario(scenarioId: number): Promise<void>;
+
+  getPresets(): Promise<Preset[]>;
+  getPresetsByType(type: string): Promise<Preset[]>;
+  createPreset(preset: InsertPreset): Promise<Preset>;
+  deletePreset(id: number): Promise<void>;
+
+  getEventsByFracAndScenario(fracJobId: number, scenarioId: number): Promise<FracDailyEvent[]>;
+  getEvent(id: number): Promise<FracDailyEvent | undefined>;
+  createEvent(event: InsertFracDailyEvent): Promise<FracDailyEvent>;
+  updateEvent(id: number, event: Partial<InsertFracDailyEvent>): Promise<FracDailyEvent | undefined>;
+  deleteEvent(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -93,6 +107,9 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
   async deleteScenario(id: number): Promise<void> {
+    await db.delete(allocationBlocks).where(eq(allocationBlocks.scenarioId, id));
+    await db.delete(fracDailyEvents).where(eq(fracDailyEvents.scenarioId, id));
+    await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.scenarioId, id));
     await db.delete(scenarios).where(eq(scenarios.id, id));
   }
 
@@ -204,6 +221,41 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteAllocationsByScenario(scenarioId: number): Promise<void> {
     await db.delete(allocationBlocks).where(eq(allocationBlocks.scenarioId, scenarioId));
+  }
+
+  async getPresets(): Promise<Preset[]> {
+    return db.select().from(presets);
+  }
+  async getPresetsByType(type: string): Promise<Preset[]> {
+    return db.select().from(presets).where(eq(presets.presetType, type));
+  }
+  async createPreset(preset: InsertPreset): Promise<Preset> {
+    const [created] = await db.insert(presets).values(preset).returning();
+    return created;
+  }
+  async deletePreset(id: number): Promise<void> {
+    await db.delete(presets).where(eq(presets.id, id));
+  }
+
+  async getEventsByFracAndScenario(fracJobId: number, scenarioId: number): Promise<FracDailyEvent[]> {
+    return db.select().from(fracDailyEvents).where(
+      and(eq(fracDailyEvents.fracJobId, fracJobId), eq(fracDailyEvents.scenarioId, scenarioId))
+    );
+  }
+  async getEvent(id: number): Promise<FracDailyEvent | undefined> {
+    const [event] = await db.select().from(fracDailyEvents).where(eq(fracDailyEvents.id, id));
+    return event;
+  }
+  async createEvent(event: InsertFracDailyEvent): Promise<FracDailyEvent> {
+    const [created] = await db.insert(fracDailyEvents).values(event).returning();
+    return created;
+  }
+  async updateEvent(id: number, event: Partial<InsertFracDailyEvent>): Promise<FracDailyEvent | undefined> {
+    const [updated] = await db.update(fracDailyEvents).set(event).where(eq(fracDailyEvents.id, id)).returning();
+    return updated;
+  }
+  async deleteEvent(id: number): Promise<void> {
+    await db.delete(fracDailyEvents).where(eq(fracDailyEvents.id, id));
   }
 }
 

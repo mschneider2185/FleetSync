@@ -556,14 +556,48 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                   const totalAllDay = allocations
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
+                  const fracNeedsTotal = schedules
+                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
+                    .reduce((sum, s) => sum + s.requiredTrucksPerShift, 0);
+                  const shortfall = fracNeedsTotal > 0 && totalAllDay < fracNeedsTotal;
+                  const delta = totalAllDay - fracNeedsTotal;
                   return (
                     <td
                       key={i}
-                      className="border-b border-r text-center font-semibold py-2"
+                      className={`border-b border-r text-center font-semibold py-2 ${shortfall ? "bg-red-100 dark:bg-red-900/30" : ""}`}
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-total-${ds}`}
                     >
-                      {totalAllDay > 0 ? totalAllDay : ""}
+                      <div className="leading-tight">{totalAllDay > 0 ? totalAllDay : ""}</div>
+                      {shortfall && totalAllDay > 0 && (
+                        <div className="text-[9px] font-normal leading-tight text-red-600 dark:text-red-400" data-testid={`cell-shortfall-${ds}`}>
+                          {delta}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+              <tr className="bg-muted/20">
+                <td
+                  className="sticky left-0 z-10 bg-muted/20 border-b border-r px-3 py-2 font-semibold text-sm text-muted-foreground"
+                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                  data-testid="text-frac-needs-total"
+                >
+                  Frac Needs Total
+                </td>
+                {dateStrings.map((ds, i) => {
+                  const fracNeedsTotal = schedules
+                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
+                    .reduce((sum, s) => sum + s.requiredTrucksPerShift, 0);
+                  return (
+                    <td
+                      key={i}
+                      className="border-b border-r text-center font-medium py-2 text-muted-foreground"
+                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                      data-testid={`cell-frac-needs-${ds}`}
+                    >
+                      {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
                     </td>
                   );
                 })}

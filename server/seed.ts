@@ -1,8 +1,47 @@
 import { db } from "./db";
-import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks } from "@shared/schema";
+import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks, presets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+async function seedPresets() {
+  const existingPresets = await db.select().from(presets);
+  if (existingPresets.length === 0) {
+    await db.insert(presets).values([
+      {
+        presetType: "storage",
+        name: "Kube Job",
+        description: "Standard kube setup with 2500 ton starting capacity",
+        data: JSON.stringify({ storageType: "kube", storageCapacity: 2500 }),
+        isSystem: true,
+      },
+      {
+        presetType: "storage",
+        name: "Silo Job",
+        description: "Standard silo setup with 500 ton starting capacity",
+        data: JSON.stringify({ storageType: "silo", storageCapacity: 500 }),
+        isSystem: true,
+      },
+      {
+        presetType: "sand_design",
+        name: "165 ton/stage",
+        description: "Standard 165 ton per stage design",
+        data: JSON.stringify({ tonsPerStage: 165 }),
+        isSystem: true,
+      },
+      {
+        presetType: "sand_design",
+        name: "220 ton/stage",
+        description: "Heavy 220 ton per stage design",
+        data: JSON.stringify({ tonsPerStage: 220 }),
+        isSystem: true,
+      },
+    ]);
+    console.log("System presets seeded");
+  }
+}
+
 export async function seedDatabase() {
+  await seedPresets();
+
   const existingLanes = await db.select().from(lanes);
   if (existingLanes.length > 0) return;
 

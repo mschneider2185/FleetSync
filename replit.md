@@ -14,23 +14,28 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 ## Data Model
 - **Lanes**: Fleet lanes (e.g., EVO1, EVO10) that group sequential frac jobs
 - **FracJobs**: Individual frac operations with sand plan details (stages/day, tons/stage, travel time, storage)
-- **Scenarios**: Planning versions (Baseline, Forecast, Actual, Sandbox) with cloning support
+- **Scenarios**: Planning versions (Baseline, Forecast, Actual, Sandbox) with cloning support; includes `createdByUserId` for sandbox ownership
 - **ScenarioFracSchedules**: Per-scenario scheduling (dates, required trucks/shift, status)
 - **Haulers**: Trucking companies with max capacity and minimum commitments
 - **HaulerCapacityExceptions**: Day-specific hauler capacity overrides
 - **AllocationBlocks**: Hauler-to-frac truck assignments by date range and scenario
+- **Presets**: Reusable configurations (storage or sand_design type) with JSON data, system flag
+- **FracDailyEvents**: Daily journal entries per frac+scenario with category (NPT, MECHANICAL, WEATHER, etc.), hours lost, notes
 
 ## Key Features (MVP)
 - Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, and visible horizontal scrollbar
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
 - Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
-- Scenario management (Baseline/Forecast/Sandbox) with clone and compare
+- Scenario management (Baseline/Forecast/Actual/Sandbox) with clone, sandbox creation, and role-based access (planner vs viewer)
+- Lane cascading: extending a frac's end date auto-pushes downstream fracs in the same lane
 - Frac job builder with sand plan details (including configurable load+unload time)
 - Hauler management with capacity tracking
 - Real-time conflict detection (over-capacity, under-supplied, over-supplied, hauler split warnings) with orphaned schedule protection
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
-- Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), and hauler assignments
+- Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, and daily journal
+- Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
+- Frac Needs Total footer row in allocation grid: sums required trucks across active schedules per day, highlights shortfalls in red
 - Lane management panel (create, rename, recolor, delete lanes)
 - Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
 - Step-by-step truck recommendation breakdown in demand tab
@@ -84,13 +89,23 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 ### CRUD
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
 - `/api/scenarios` - GET, POST; `/api/scenarios/:id` - PATCH, DELETE
-- `/api/scenarios/:id/clone` - POST (clone with schedules + allocations)
+- `/api/scenarios/:id/clone` - POST (clone with schedules + allocations in transaction)
+- `/api/scenarios/:id/create-sandbox` - POST (create sandbox from scenario)
 - `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE
 - `/api/scenarios/:scenarioId/schedules` - GET
-- `/api/schedules` - POST; `/api/schedules/:id` - PATCH, DELETE
+- `/api/schedules` - POST; `/api/schedules/:id` - PATCH (with lane cascading), DELETE
 - `/api/haulers` - GET, POST; `/api/haulers/:id` - PATCH, DELETE
 - `/api/haulers/:id/capacity-exceptions` - GET
 - `/api/capacity-exceptions` - POST; `/api/capacity-exceptions/:id` - DELETE
 - `/api/scenarios/:scenarioId/allocations` - GET
 - `/api/allocations` - POST; `/api/allocations/:id` - PATCH, DELETE
 - `/api/scenarios/:scenarioId/conflicts` - GET (computed conflict detection)
+- `/api/presets` - GET (?type= filter), POST, DELETE /:id (planner only)
+- `/api/frac-jobs/:id/events` - GET (?scenarioId=), POST
+- `/api/events/:id` - PATCH, DELETE
+- `/api/auth/role` - GET (returns { isPlanner: boolean })
+
+## Role-Based Access
+- `PLANNER_USERNAMES` env var: comma-separated Replit usernames; if empty, all users are planners
+- Planners can edit Forecast/Baseline/Actual scenarios, create presets, clone scenarios
+- Viewers can create sandboxes and edit their own sandbox scenarios

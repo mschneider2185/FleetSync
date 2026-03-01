@@ -18,6 +18,7 @@ export const scenarios = pgTable("scenarios", {
   type: text("type").notNull(),
   parentScenarioId: integer("parent_scenario_id"),
   locked: boolean("locked").notNull().default(false),
+  createdByUserId: varchar("created_by_user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -80,6 +81,29 @@ export const allocationBlocks = pgTable("allocation_blocks", {
   trucksPerShift: integer("trucks_per_shift").notNull(),
 });
 
+export const presets = pgTable("presets", {
+  id: serial("id").primaryKey(),
+  presetType: text("preset_type").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  data: text("data").notNull(),
+  isSystem: boolean("is_system").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const fracDailyEvents = pgTable("frac_daily_events", {
+  id: serial("id").primaryKey(),
+  scenarioId: integer("scenario_id").notNull(),
+  fracJobId: integer("frac_job_id").notNull(),
+  date: text("date").notNull(),
+  shift: text("shift").notNull().default("both"),
+  category: text("category").notNull(),
+  hoursLost: real("hours_lost"),
+  notes: text("notes"),
+  createdByUserId: varchar("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const lanesRelations = relations(lanes, ({ many }) => ({
   fracJobs: many(fracJobs),
 }));
@@ -116,6 +140,11 @@ export const allocationBlocksRelations = relations(allocationBlocks, ({ one }) =
   hauler: one(haulers, { fields: [allocationBlocks.haulerId], references: [haulers.id] }),
 }));
 
+export const fracDailyEventsRelations = relations(fracDailyEvents, ({ one }) => ({
+  scenario: one(scenarios, { fields: [fracDailyEvents.scenarioId], references: [scenarios.id] }),
+  fracJob: one(fracJobs, { fields: [fracDailyEvents.fracJobId], references: [fracJobs.id] }),
+}));
+
 export const insertLaneSchema = createInsertSchema(lanes).omit({ id: true });
 export const insertScenarioSchema = createInsertSchema(scenarios).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertFracJobSchema = createInsertSchema(fracJobs).omit({ id: true, createdAt: true });
@@ -123,6 +152,8 @@ export const insertScenarioFracScheduleSchema = createInsertSchema(scenarioFracS
 export const insertHaulerSchema = createInsertSchema(haulers).omit({ id: true });
 export const insertHaulerCapacityExceptionSchema = createInsertSchema(haulerCapacityExceptions).omit({ id: true });
 export const insertAllocationBlockSchema = createInsertSchema(allocationBlocks).omit({ id: true });
+export const insertPresetSchema = createInsertSchema(presets).omit({ id: true, createdAt: true });
+export const insertFracDailyEventSchema = createInsertSchema(fracDailyEvents).omit({ id: true, createdAt: true });
 
 export type Lane = typeof lanes.$inferSelect;
 export type InsertLane = z.infer<typeof insertLaneSchema>;
@@ -138,3 +169,7 @@ export type HaulerCapacityException = typeof haulerCapacityExceptions.$inferSele
 export type InsertHaulerCapacityException = z.infer<typeof insertHaulerCapacityExceptionSchema>;
 export type AllocationBlock = typeof allocationBlocks.$inferSelect;
 export type InsertAllocationBlock = z.infer<typeof insertAllocationBlockSchema>;
+export type Preset = typeof presets.$inferSelect;
+export type InsertPreset = z.infer<typeof insertPresetSchema>;
+export type FracDailyEvent = typeof fracDailyEvents.$inferSelect;
+export type InsertFracDailyEvent = z.infer<typeof insertFracDailyEventSchema>;
