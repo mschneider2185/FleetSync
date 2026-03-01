@@ -1,0 +1,232 @@
+You are a senior full‑stack engineer working inside an existing Replit project called “FleetSync”, a web-based sand hauling logistics planner.
+
+Context (existing app):
+- Stack: React + TypeScript + Tailwind + shadcn/ui on frontend; Express + TypeScript on backend; PostgreSQL + Drizzle ORM; Replit Auth (OIDC); Wouter; TanStack React Query v5; Zod/drizzle-zod.  (See README)
+- Core UX: a combined Dashboard page with an interactive Gantt chart and an Excel-like Allocation Grid connected with a draggable splitter; inline cell editing; conflict detection exists; CRUD exists for frac jobs/haulers/lanes/scenarios/schedules/allocations.
+- Current gap: “sandbox” and “scenario cloning” are NOT functional yet, even if UI/README mentions them.
+
+Goal:
+Implement the following features end-to-end (DB + API + UI), keeping current patterns, file structure, and coding style consistent. Do NOT do a large refactor—make incremental changes.
+
+FEATURES TO IMPLEMENT (in this order)
+
+============================================================
+1) SCENARIO CLONING + REAL SANDBOX (SAFE WHAT-IF PLAYGROUND)
+============================================================
+
+A) Data model updates (Drizzle schema + migration)
+- Ensure scenarios support:
+  - type: BASELINE | FORECAST | ACTUAL | SANDBOX
+  - locked: boolean (already exists or add)
+  - parentScenarioId: nullable (for sandbox lineage)
+  - createdByUserId: nullable (owner for sandbox)
+  - createdAt/updatedAt if not already
+- If you already have scenario types, extend them; do not break existing rows.
+
+B) API: Clone Scenario
+- Add/finish endpoint: POST /api/scenarios/:id/clone
+- Behavior:
+  - Creates a new scenario row (name like “<Original Name> (Copy)” or “Sandbox - <user> - <date>” depending on caller).
+  - Copies all ScenarioFracSchedules for the source scenario into the new scenario.
+  - Copies all AllocationBlocks for the source scenario into the new scenario.
+  - Copies HaulerCapacityExceptions for the source scenario into the new scenario (if your app stores those per scenario; if they’re global, skip).
+  - Use a DB transaction. If any copy fails, roll back.
+  - Return the new scenario.
+
+C) API: Create Sandbox from Forecast
+- Add endpoint: POST /api/scenarios/:id/create-sandbox
+  - Valid only if :id is a FORECAST scenario (or allow any source scenario).
+  - It clones the source scenario but sets:
+    - type = SANDBOX
+    - parentScenarioId = sourceScenarioId
+    - createdByUserId = current user id
+    - locked = false
+    - name = “Sandbox - <username> - <YYYY-MM-DD>”
+- Permission rules:
+  - Anyone logged in can create a sandbox.
+  - Only the scenario owner can edit their sandbox (or allow all users to edit all sandboxes if there is no user table—BUT the key requirement is that Forecast/Baseline/Actual are protected from random edits).
+  - Baseline and Actual should be locked by default.
+  - Forecast should be editable ONLY by a “planner”.
+
+D) Minimal role check (“planner vs viewer”) without building a whole RBAC system
+- Implement a simple planner allowlist:
+  - ENV: PLANNER_EMAIL_ALLOWLIST="email1@...,email2@..."
+  - If user.email is in allowlist => planner; else viewer.
+- Enforce on server:
+  - Only planner can edit FORECAST.
+  - Baseline/Actual locked cannot be edited by anyone unless unlocked by planner.
+  - Sandboxes: editable by creator (createdByUserId), optionally also planners.
+- Enforce in UI as well (disable edit buttons for disallowed actions), but server enforcement is required.
+
+E) UI: Scenario selector / actions
+- In scenario-selector.tsx:
+  - Add “Create Sandbox from Forecast” action when a Forecast scenario is selected (visible to all users).
+  - Add “Clone Scenario” action (planner-only) for general cloning.
+  - Make “Sandbox” scenarios clearly labeled and show owner.
+- Make it obvious which scenario you’re in (Baseline/Forecast/Actual/Sandbox badge).
+
+Acceptance criteria:
+- Viewer cannot accidentally edit Forecast/Baseline/Actual.
+- Viewer can create a Sandbox from Forecast and freely drag schedules / edit allocations inside that sandbox.
+- Forecast does not change when sandbox changes.
+- Cloning copies schedules + allocations correctly.
+
+============================================================
+2) FRAC BUILD SPEED: PRESETS / TEMPLATES LIBRARY
+============================================================
+
+Goal: speed up frac job creation with stored defaults:
+- Storage presets:
+  - “Kube job” => starting sand = 2500 tons
+  - “Silo job” => starting sand = 500 tons
+- Sand design presets:
+  - “165 ton/stage”
+  - “220 ton/stage”
+These should be selectable in the frac-job-dialog to auto-fill fields.
+
+A) DB table
+- Add table: presets
+  - id
+  - presetType: STORAGE | SAND_DESIGN (enum/text)
+  - name
+  - description (nullable)
+  - data JSON (the fields to apply)
+  - isSystem boolean default true/false
+  - createdByUserId nullable
+  - createdAt
+
+B) Seed system presets
+- In server/seed.ts (or wherever your seed is):
+  - Insert the four system presets if they don’t already exist.
+
+C) UI: frac-job-dialog.tsx
+- Add two dropdowns:
+  - Storage preset
+  - Sand design preset
+- On selection:
+  - Apply defaults into the form state.
+  - Do not silently overwrite user-edited values if they already typed; if any target fields are “dirty”, show a small confirm modal: “Apply preset and overwrite edited fields?” with Cancel/Apply.
+- Add a “Clear preset selection” option (doesn’t clear fields, just unselects preset).
+
+Fields (map them to your existing schema names):
+- Storage preset should set:
+  - storageType (KUBE vs SILO) if you have it
+  - startingInventoryTons (new field if needed) OR store as on-site starting sand in tons
+- Sand design preset should set:
+  - tonsPerStage
+
+Acceptance criteria:
+- Creating a new frac can be done by selecting presets + entering only a few remaining fields.
+- Presets are stored in DB and available on any machine.
+
+============================================================
+3) DAILY JOURNAL / LOG (OPERATIONAL ANNOTATIONS)
+============================================================
+
+Goal: allow users to annotate what happened each day for a frac:
+- NPT
+- mechanical breakdown
+- Stop Work Authority (SWA)
+- weather, water limitation, sand supply issue, truck shortage, etc.
+
+A) DB table: frac_daily_events
+- id
+- scenarioId (nullable OR required; choose one)
+  - Recommend: scenarioId required so Actual logs stay with Actual scenario.
+- fracJobId
+- date (day bucket)
+- shift: DAY | NIGHT | BOTH (optional; can default BOTH)
+- category enum/text: NPT | MECHANICAL | WEATHER | WATER_LIMITATION | SAND_SUPPLY | TRUCK_SHORTAGE | SWA | OTHER
+- hoursLost (numeric) or minutesLost (int) optional
+- notes (text)
+- createdByUserId
+- createdAt
+
+B) API routes
+- GET /api/frac-jobs/:id/events?scenarioId=...
+- POST /api/frac-jobs/:id/events
+- DELETE /api/events/:id
+- (Optional) PATCH /api/events/:id
+
+C) UI
+- Add a “Journal” tab in frac-detail-panel.tsx:
+  - show entries for selected scenario + frac
+  - add entry inline (category dropdown + notes + optional hoursLost)
+- Optional but nice: show a small indicator on the Gantt bar or in the Allocation Grid header if a day has any journal entries.
+
+Acceptance criteria:
+- User can add a “SWA” entry for a specific date and see it listed for that frac.
+- Entries persist and are scenario-aware (at least for Actual).
+
+============================================================
+4) LANE CASCADING: PUSH DOWNSTREAM FRACS WHEN ONE EXTENDS
+============================================================
+
+Goal: if a frac extends (end date pushed right), automatically shift subsequent fracs in that same lane so they cannot start until the prior is done.
+
+Important: We only need “push-right cascade” now. Do NOT auto-pull fracs earlier when a job shortens.
+
+Implementation:
+- When a schedule is updated (drag in gantt-chart.tsx -> PATCH /api/schedules/:id):
+  - Compare oldEnd vs newEnd.
+  - If newEnd > oldEnd (deltaDays or deltaMs > 0):
+    - Find all other schedules in the same scenario AND same lane that start AFTER the updated schedule start (or are sequenced after it).
+    - Shift each downstream schedule by the same delta (preserve duration and existing gaps).
+    - Use a DB transaction.
+- Make sure conflict detection recomputes based on the new dates.
+
+Edge cases:
+- If downstream schedules overlap after shifting (shouldn’t if you shift all by same delta), ensure you don’t create duplicates.
+- If a downstream schedule was manually overlapped on purpose, still push it right because the requirement is “if one frac is still going then the next can’t start.”
+
+Acceptance criteria:
+- Extend Mingo by +2 days => the next frac in that lane automatically shifts +2 days (and so on downstream).
+- Shortening a frac does NOT automatically pull others earlier.
+
+============================================================
+5) ALLOCATION GRID FOOTER: ADD “FRAC NEEDS TOTAL” ROW
+============================================================
+
+Goal: under the existing bottom row “Hauler Totals”, add another row:
+- “Frac Needs Total”
+- For each date column, show total required trucks/shift across all fracs in the grid window
+- This lets users compare “what we need vs what we’re providing”.
+
+Implementation details:
+- The grid already has per-frac “Needs X” and per-day need cells (or it knows requiredTrucks from schedule).
+- For each visible date:
+  - For each frac group:
+    - If that frac is active/scheduled on that date in the selected scenario, add its required trucks/shift for that date.
+      - Use the schedule’s requiredTrucksPerShift (or existing field).
+      - If you support per-day overrides for demand, respect them (if present).
+    - Else add 0.
+  - Sum across all fracs => Frac Needs Total for that date.
+- Render:
+  - Existing footer row: “Hauler Totals” (provided)
+  - New footer row: “Frac Needs Total” (required)
+- Styling:
+  - Keep it visually consistent with the Hauler Totals row.
+  - Optional: if Hauler Totals < Frac Needs Total, apply a subtle red background to the Hauler Totals cell or show a small “-X” shortfall indicator in that column footer.
+
+Acceptance criteria:
+- Footer shows two rows:
+  - Hauler Totals (already)
+  - Frac Needs Total (new)
+- Numbers match the sum of each frac’s daily need across the grid range.
+
+============================================================
+DELIVERABLES / QUALITY BAR
+============================================================
+- Update Drizzle schema + migrations and run db:push compatibility.
+- Add/extend API routes in server/routes.ts and storage layer in server/storage.ts as needed.
+- Update client components:
+  - scenario-selector.tsx (sandbox + clone actions)
+  - frac-job-dialog.tsx (presets)
+  - frac-detail-panel.tsx (journal tab)
+  - gantt-chart.tsx and server schedule update route (lane cascading)
+  - allocation-grid.tsx (add “Frac Needs Total” footer row)
+- Keep existing UX (inline edit, conflicts, splitter) working.
+- Add basic server-side validation with Zod where appropriate.
+- After implementation, provide a short “Manual Test Plan” checklist.
+
+Do the work directly in the codebase: identify existing types/fields first, then implement changes without breaking current functionality.
