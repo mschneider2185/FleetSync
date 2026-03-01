@@ -2,6 +2,29 @@ import { db } from "./db";
 import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks, presets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
+async function cleanupOrphanedData() {
+  const allFracIds = (await db.select({ id: fracJobs.id }).from(fracJobs)).map(f => f.id);
+  if (allFracIds.length === 0) return;
+  
+  const allSchedules = await db.select().from(scenarioFracSchedules);
+  const orphanedSchedules = allSchedules.filter(s => !allFracIds.includes(s.fracJobId));
+  if (orphanedSchedules.length > 0) {
+    for (const s of orphanedSchedules) {
+      await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.id, s.id));
+    }
+    console.log(`Cleaned up ${orphanedSchedules.length} orphaned schedules`);
+  }
+
+  const allAllocations = await db.select().from(allocationBlocks);
+  const orphanedAllocations = allAllocations.filter(a => !allFracIds.includes(a.fracJobId));
+  if (orphanedAllocations.length > 0) {
+    for (const a of orphanedAllocations) {
+      await db.delete(allocationBlocks).where(eq(allocationBlocks.id, a.id));
+    }
+    console.log(`Cleaned up ${orphanedAllocations.length} orphaned allocations`);
+  }
+}
+
 async function seedPresets() {
   const existingPresets = await db.select().from(presets);
   if (existingPresets.length === 0) {
@@ -40,6 +63,7 @@ async function seedPresets() {
 }
 
 export async function seedDatabase() {
+  await cleanupOrphanedData();
   await seedPresets();
 
   const existingLanes = await db.select().from(lanes);

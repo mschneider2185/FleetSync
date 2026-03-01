@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
+import { getEffectiveTrucksForDate } from "@shared/schema";
 
 const COL_WIDTH = 56;
 const LABEL_WIDTH = 220;
@@ -95,14 +96,17 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   const dateStrings = useMemo(() => dates.map(d => format(d, "yyyy-MM-dd")), [dates]);
 
   const fracMap = useMemo(() => new Map(fracJobs.map(f => [f.id, f])), [fracJobs]);
+  const fracJobIds = useMemo(() => new Set(fracJobs.map(f => f.id)), [fracJobs]);
   const haulerMap = useMemo(() => new Map(haulers.map(h => [h.id, h])), [haulers]);
   const laneMap = useMemo(() => new Map(lanes.map(l => [l.id, l])), [lanes]);
+
+  const validSchedules = useMemo(() => schedules.filter(s => fracJobIds.has(s.fracJobId)), [schedules, fracJobIds]);
 
   const activeSchedules = useMemo(() => {
     const endDateStr = format(addDays(startDate, daysVisible), "yyyy-MM-dd");
     const startDateStr = format(startDate, "yyyy-MM-dd");
-    return schedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
-  }, [schedules, startDate, daysVisible]);
+    return validSchedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
+  }, [validSchedules, startDate, daysVisible]);
 
   const getAllocForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
     return allocations.find(a =>
@@ -405,7 +409,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                           )}
                           <span className="font-semibold text-sm truncate" data-testid={`text-grid-frac-${frac.id}`}>{frac.padName}</span>
                           <Badge variant="secondary" className="text-[10px] shrink-0">
-                            Needs {schedule.requiredTrucksPerShift}
+                            Needs {schedule.requiredTrucksPerShift}{schedule.truckRequirementOverrides ? "*" : ""}
                           </Badge>
                         </div>
                         <Button
@@ -434,11 +438,12 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                         );
                       }
                       const total = getTotalForFracDay(schedule.fracJobId, ds);
-                      const diff = total - schedule.requiredTrucksPerShift;
+                      const needed = getEffectiveTrucksForDate(schedule, ds);
+                      const diff = total - needed;
                       return (
                         <td
                           key={i}
-                          className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, schedule.requiredTrucksPerShift)}`}
+                          className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, needed)}`}
                           style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                           data-testid={`cell-frac-total-${frac.id}-${ds}`}
                         >
@@ -556,9 +561,9 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                   const totalAllDay = allocations
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const fracNeedsTotal = schedules
+                  const fracNeedsTotal = validSchedules
                     .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
-                    .reduce((sum, s) => sum + s.requiredTrucksPerShift, 0);
+                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
                   const shortfall = fracNeedsTotal > 0 && totalAllDay < fracNeedsTotal;
                   const delta = totalAllDay - fracNeedsTotal;
                   return (
@@ -587,9 +592,9 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                   Frac Needs Total
                 </td>
                 {dateStrings.map((ds, i) => {
-                  const fracNeedsTotal = schedules
+                  const fracNeedsTotal = validSchedules
                     .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
-                    .reduce((sum, s) => sum + s.requiredTrucksPerShift, 0);
+                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
                   return (
                     <td
                       key={i}

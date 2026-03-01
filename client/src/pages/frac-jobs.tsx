@@ -18,7 +18,8 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, CalendarPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, CalendarPlus, Copy } from "lucide-react";
+import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { Lane, FracJob, ScenarioFracSchedule } from "@shared/schema";
 
 export default function FracJobs() {
@@ -26,6 +27,8 @@ export default function FracJobs() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editJob, setEditJob] = useState<FracJob | null>(null);
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const [cloneJob, setCloneJob] = useState<FracJob | null>(null);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [scheduleFormFracId, setScheduleFormFracId] = useState<number | null>(null);
   const [editScheduleId, setEditScheduleId] = useState<number | null>(null);
@@ -203,6 +206,15 @@ export default function FracJobs() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => { setCloneJob(job); setCloneDialogOpen(true); }}
+                        title="Clone frac job"
+                        data-testid={`button-clone-frac-${job.id}`}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => { setEditJob(job); setDialogOpen(true); }}
                         data-testid={`button-edit-frac-${job.id}`}
                       >
@@ -229,6 +241,12 @@ export default function FracJobs() {
         open={dialogOpen}
         onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditJob(null); }}
         editJob={editJob}
+      />
+
+      <FracCloneDialog
+        open={cloneDialogOpen}
+        onOpenChange={(open) => { setCloneDialogOpen(open); if (!open) setCloneJob(null); }}
+        sourceJob={cloneJob}
       />
 
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>

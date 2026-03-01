@@ -12,6 +12,7 @@ import {
   insertScenarioFracScheduleSchema, insertHaulerSchema,
   insertHaulerCapacityExceptionSchema, insertAllocationBlockSchema,
   insertPresetSchema, insertFracDailyEventSchema,
+  getEffectiveTrucksForDate,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
@@ -618,7 +619,7 @@ export async function registerRoutes(
           const frac = fracMap.get(schedule.fracJobId);
           if (!frac) continue;
           const assigned = fracAssignments.get(schedule.fracJobId) || 0;
-          const required = schedule.requiredTrucksPerShift;
+          const required = getEffectiveTrucksForDate(schedule, dateStr);
           const name = frac.padName || frac.wellName || `Frac #${schedule.fracJobId}`;
 
           if (assigned < required) {

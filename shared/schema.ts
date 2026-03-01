@@ -49,6 +49,7 @@ export const scenarioFracSchedules = pgTable("scenario_frac_schedules", {
   plannedEndDate: text("planned_end_date").notNull(),
   transitionDaysAfter: integer("transition_days_after").notNull().default(0),
   requiredTrucksPerShift: integer("required_trucks_per_shift").notNull().default(0),
+  truckRequirementOverrides: text("truck_requirement_overrides"),
   status: text("status").notNull().default("planned"),
 });
 
@@ -144,6 +145,29 @@ export const fracDailyEventsRelations = relations(fracDailyEvents, ({ one }) => 
   scenario: one(scenarios, { fields: [fracDailyEvents.scenarioId], references: [scenarios.id] }),
   fracJob: one(fracJobs, { fields: [fracDailyEvents.fracJobId], references: [fracJobs.id] }),
 }));
+
+export function getEffectiveTrucksForDate(
+  schedule: { requiredTrucksPerShift: number; truckRequirementOverrides: string | null },
+  dateStr: string
+): number {
+  if (!schedule.truckRequirementOverrides) return schedule.requiredTrucksPerShift;
+  let overrides: Record<string, number>;
+  try {
+    overrides = JSON.parse(schedule.truckRequirementOverrides);
+  } catch {
+    return schedule.requiredTrucksPerShift;
+  }
+  const sortedDates = Object.keys(overrides).sort();
+  let effectiveValue = schedule.requiredTrucksPerShift;
+  for (const d of sortedDates) {
+    if (d <= dateStr) {
+      effectiveValue = overrides[d];
+    } else {
+      break;
+    }
+  }
+  return effectiveValue;
+}
 
 export const insertLaneSchema = createInsertSchema(lanes).omit({ id: true });
 export const insertScenarioSchema = createInsertSchema(scenarios).omit({ id: true, createdAt: true, updatedAt: true });

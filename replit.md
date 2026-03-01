@@ -15,7 +15,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - **Lanes**: Fleet lanes (e.g., EVO1, EVO10) that group sequential frac jobs
 - **FracJobs**: Individual frac operations with sand plan details (stages/day, tons/stage, travel time, storage)
 - **Scenarios**: Planning versions (Baseline, Forecast, Actual, Sandbox) with cloning support; includes `createdByUserId` for sandbox ownership
-- **ScenarioFracSchedules**: Per-scenario scheduling (dates, required trucks/shift, status)
+- **ScenarioFracSchedules**: Per-scenario scheduling (dates, required trucks/shift, status, truckRequirementOverrides JSON for date-segmented changes)
 - **Haulers**: Trucking companies with max capacity and minimum commitments
 - **HaulerCapacityExceptions**: Day-specific hauler capacity overrides
 - **AllocationBlocks**: Hauler-to-frac truck assignments by date range and scenario
@@ -35,7 +35,9 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, and daily journal
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
-- Frac Needs Total footer row in allocation grid: sums required trucks across active schedules per day, highlights shortfalls in red
+- Frac Needs Total footer row in allocation grid: sums required trucks across active schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
+- Frac-level cloning: Clone button on frac cards and detail panel, pre-fills all frac data with "(Copy)" suffix, includes schedule fields for immediate scheduling
+- Date-segmented truck requirements: `truckRequirementOverrides` JSON on schedules allows forward-only changes (e.g., change trucks from date X onward); helper `getEffectiveTrucksForDate()` used in grid, footer, and conflict detection
 - Lane management panel (create, rename, recolor, delete lanes)
 - Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
 - Step-by-step truck recommendation breakdown in demand tab
@@ -53,7 +55,8 @@ client/src/
     frac-job-dialog.tsx        # Create/edit frac job form (with useEffect reset)
     hauler-dialog.tsx          # Create/edit hauler form (with useEffect reset)
     allocation-dialog.tsx      # Create/edit allocation form
-    frac-detail-panel.tsx      # Side panel with frac details + demand breakdown
+    frac-detail-panel.tsx      # Side panel with frac details + demand breakdown + truck overrides
+    frac-clone-dialog.tsx      # Clone frac dialog with pre-filled data + schedule fields
     lane-dialog.tsx            # Create/edit lane (name, color, sort order)
   pages/
     landing.tsx                # Auth landing page

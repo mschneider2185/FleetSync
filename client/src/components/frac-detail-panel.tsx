@@ -11,9 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Copy } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, FracDailyEvent } from "@shared/schema";
 
 interface FracDetailPanelProps {
@@ -85,6 +86,8 @@ function getCategoryColor(category: string): string {
 }
 
 export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers, scenarioId }: FracDetailPanelProps) {
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+
   if (!fracJob) return null;
 
   const fracAllocations = allocations.filter(a => a.fracJobId === fracJob.id);
@@ -99,6 +102,7 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[420px] sm:w-[480px] overflow-y-auto">
         <SheetHeader className="pb-4">
@@ -109,6 +113,16 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
                 {schedule.status}
               </span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1 ml-auto"
+              onClick={() => setCloneDialogOpen(true)}
+              data-testid="button-clone-from-detail"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Clone
+            </Button>
           </SheetTitle>
           {fracJob.customer && (
             <p className="text-sm text-muted-foreground">{fracJob.customer} &middot; {fracJob.basin}</p>
@@ -207,7 +221,7 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
           <TabsContent value="demand" className="space-y-4 pt-2">
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Required Trucks/Shift (set)</p>
+                <p className="text-sm font-medium">Required Trucks/Shift (base)</p>
                 <Badge variant="secondary" data-testid="badge-required-trucks">{schedule?.requiredTrucksPerShift || 0}</Badge>
               </div>
 
@@ -220,6 +234,10 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
                 </div>
               )}
             </div>
+
+            {schedule && scenarioId && (
+              <TruckOverridesSection schedule={schedule} scenarioId={scenarioId} />
+            )}
 
             {recommendation && (
               <div className="rounded-md border p-4 space-y-2">
@@ -316,6 +334,138 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
         </Tabs>
       </SheetContent>
     </Sheet>
+    <FracCloneDialog
+      open={cloneDialogOpen}
+      onOpenChange={(open) => { setCloneDialogOpen(open); }}
+      sourceJob={fracJob}
+    />
+    </>
+  );
+}
+
+function TruckOverridesSection({ schedule, scenarioId }: { schedule: ScenarioFracSchedule; scenarioId: number }) {
+  const { toast } = useToast();
+  const [addingOverride, setAddingOverride] = useState(false);
+  const [overrideDate, setOverrideDate] = useState("");
+  const [overrideTrucks, setOverrideTrucks] = useState("");
+
+  const overrides: Record<string, number> = schedule.truckRequirementOverrides
+    ? (() => { try { return JSON.parse(schedule.truckRequirementOverrides); } catch { return {}; } })()
+    : {};
+  const sortedOverrides = Object.entries(overrides).sort(([a], [b]) => a.localeCompare(b));
+
+  const updateMutation = useMutation({
+    mutationFn: async (newOverrides: Record<string, number>) => {
+      const body = {
+        truckRequirementOverrides: Object.keys(newOverrides).length > 0 ? JSON.stringify(newOverrides) : null,
+      };
+      await apiRequest("PATCH", `/api/schedules/${schedule.id}`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "conflicts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleAddOverride = () => {
+    if (!overrideDate || overrideTrucks === "") return;
+    if (overrideDate < schedule.plannedStartDate || overrideDate > schedule.plannedEndDate) {
+      toast({ title: "Invalid date", description: "Override date must be within the schedule range", variant: "destructive" });
+      return;
+    }
+    const parsed = parseInt(overrideTrucks);
+    if (isNaN(parsed) || parsed < 0) {
+      toast({ title: "Invalid value", description: "Enter a valid number of trucks", variant: "destructive" });
+      return;
+    }
+    const newOverrides = { ...overrides, [overrideDate]: parsed };
+    updateMutation.mutate(newOverrides);
+    setOverrideDate("");
+    setOverrideTrucks("");
+    setAddingOverride(false);
+  };
+
+  const handleRemoveOverride = (dateKey: string) => {
+    const newOverrides = { ...overrides };
+    delete newOverrides[dateKey];
+    updateMutation.mutate(newOverrides);
+  };
+
+  return (
+    <div className="rounded-md border p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Truck Requirement Changes</p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAddingOverride(!addingOverride)}
+          data-testid="button-add-truck-override"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" />
+          Add Change
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Changes apply forward from their date. Base value ({schedule.requiredTrucksPerShift}) applies from {format(parseISO(schedule.plannedStartDate), "MMM d")}.
+      </p>
+
+      {addingOverride && (
+        <div className="flex items-end gap-2 p-2 rounded bg-muted/50">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground">From Date</label>
+            <Input
+              type="date"
+              value={overrideDate}
+              onChange={e => setOverrideDate(e.target.value)}
+              min={schedule.plannedStartDate}
+              max={schedule.plannedEndDate}
+              data-testid="input-override-date"
+            />
+          </div>
+          <div className="w-24">
+            <label className="text-xs text-muted-foreground">Trucks</label>
+            <Input
+              type="number"
+              value={overrideTrucks}
+              onChange={e => setOverrideTrucks(e.target.value)}
+              min="0"
+              data-testid="input-override-trucks"
+            />
+          </div>
+          <Button size="sm" onClick={handleAddOverride} disabled={updateMutation.isPending} data-testid="button-confirm-override">
+            Save
+          </Button>
+        </div>
+      )}
+
+      {sortedOverrides.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No changes — base value applies for entire schedule.</p>
+      ) : (
+        <div className="space-y-1">
+          {sortedOverrides.map(([date, trucks]) => (
+            <div key={date} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-muted/50">
+              <span>
+                <span className="font-mono text-xs">{format(parseISO(date), "MMM d, yyyy")}</span>
+                <span className="mx-2 text-muted-foreground">&rarr;</span>
+                <span className="font-medium">{trucks} trucks/shift</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => handleRemoveOverride(date)}
+                data-testid={`button-remove-override-${date}`}
+              >
+                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
