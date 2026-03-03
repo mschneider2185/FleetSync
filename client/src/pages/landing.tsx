@@ -10,7 +10,7 @@ export default function Landing() {
             <div className="w-10 h-10 rounded-md bg-white/10 flex items-center justify-center">
               <Truck className="w-6 h-6" />
             </div>
-            <span className="text-xl font-semibold tracking-tight">SandPlan</span>
+            <span className="text-xl font-semibold tracking-tight">FleetSync</span>
           </div>
           <p className="text-white/50 text-sm">Sand Hauling Logistics Planner</p>
         </div>
@@ -56,7 +56,7 @@ export default function Landing() {
           </div>
         </div>
 
-        <p className="text-white/30 text-xs">&copy; 2026 SandPlan. All rights reserved.</p>
+        <p className="text-white/30 text-xs">&copy; 2026 FleetSync. All rights reserved.</p>
       </div>
 
       <div className="flex-1 flex items-center justify-center p-8">
@@ -65,7 +65,7 @@ export default function Landing() {
             <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
               <Truck className="w-6 h-6 text-primary" />
             </div>
-            <span className="text-xl font-semibold tracking-tight">SandPlan</span>
+            <span className="text-xl font-semibold tracking-tight">FleetSync</span>
           </div>
 
           <div className="space-y-2">
@@ -77,7 +77,7 @@ export default function Landing() {
 
           <a href="/api/login" data-testid="link-login">
             <Button size="lg" className="w-full gap-2">
-              Sign in to SandPlan
+              Sign in to FleetSync
               <ArrowRight className="w-4 h-4" />
             </Button>
           </a>

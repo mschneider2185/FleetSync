@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Lock, FlaskConical } from "lucide-react";
+import { Lock, FlaskConical } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -50,22 +50,15 @@ export function ScenarioSelector() {
   const { toast } = useToast();
   const [sandboxName, setSandboxName] = useState("");
   const [sandboxDialogOpen, setSandboxDialogOpen] = useState(false);
-  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
-  const [cloneName, setCloneName] = useState("");
 
   const { data: scenarios = [], isLoading } = useQuery<Scenario[]>({
     queryKey: ["/api/scenarios"],
   });
 
-  const { data: roleData } = useQuery<{ isPlanner: boolean }>({
-    queryKey: ["/api/auth/role"],
-  });
-  const isPlannerUser = roleData?.isPlanner ?? true;
-
   useEffect(() => {
     if (!activeScenarioId && scenarios.length > 0) {
-      const forecast = scenarios.find(s => s.type === "forecast");
-      if (forecast) setActiveScenarioId(forecast.id);
+      const primary = scenarios.find(s => s.type === "actual") || scenarios.find(s => s.type === "forecast");
+      if (primary) setActiveScenarioId(primary.id);
       else setActiveScenarioId(scenarios[0].id);
     }
   }, [scenarios, activeScenarioId, setActiveScenarioId]);
@@ -84,26 +77,6 @@ export function ScenarioSelector() {
       setSandboxDialogOpen(false);
       setSandboxName("");
       toast({ title: "Sandbox created", description: "You can now make changes without affecting the original plan." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const cloneMutation = useMutation({
-    mutationFn: async () => {
-      if (!activeScenarioId) return;
-      const res = await apiRequest("POST", `/api/scenarios/${activeScenarioId}/clone`, {
-        name: cloneName || undefined,
-      });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios"] });
-      if (data?.id) setActiveScenarioId(data.id);
-      setCloneDialogOpen(false);
-      setCloneName("");
-      toast({ title: "Scenario cloned" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -180,40 +153,6 @@ export function ScenarioSelector() {
         </DialogContent>
       </Dialog>
 
-      {isPlannerUser && (
-        <Dialog open={cloneDialogOpen} onOpenChange={setCloneDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1" data-testid="button-clone-scenario">
-              <Copy className="w-3.5 h-3.5" />
-              Clone
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Clone {activeScenario?.name}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label>Clone Name</Label>
-                <Input
-                  placeholder={`${activeScenario?.name} (Copy)`}
-                  value={cloneName}
-                  onChange={(e) => setCloneName(e.target.value)}
-                  data-testid="input-clone-name"
-                />
-              </div>
-              <Button
-                onClick={() => cloneMutation.mutate()}
-                disabled={cloneMutation.isPending}
-                className="w-full"
-                data-testid="button-confirm-clone"
-              >
-                {cloneMutation.isPending ? "Cloning..." : "Clone Scenario"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }

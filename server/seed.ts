@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks, presets } from "@shared/schema";
+import { lanes, scenarios, fracJobs, scenarioFracSchedules, haulers, allocationBlocks, presets, fracDailyEvents } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 async function cleanupOrphanedData() {
@@ -62,8 +62,37 @@ async function seedPresets() {
   }
 }
 
+async function cleanupScenarios() {
+  const allScenarios = await db.select().from(scenarios);
+
+  const e2eSandbox = allScenarios.find(s => s.name === "E2E Test Sandbox");
+  if (e2eSandbox) {
+    await db.delete(fracDailyEvents).where(eq(fracDailyEvents.scenarioId, e2eSandbox.id));
+    await db.delete(allocationBlocks).where(eq(allocationBlocks.scenarioId, e2eSandbox.id));
+    await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.scenarioId, e2eSandbox.id));
+    await db.delete(scenarios).where(eq(scenarios.id, e2eSandbox.id));
+    console.log("Deleted E2E Test Sandbox scenario");
+  }
+
+  const baseline = allScenarios.find(s => s.name === "Baseline Q1 2026" && s.locked);
+  if (baseline) {
+    await db.delete(fracDailyEvents).where(eq(fracDailyEvents.scenarioId, baseline.id));
+    await db.delete(allocationBlocks).where(eq(allocationBlocks.scenarioId, baseline.id));
+    await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.scenarioId, baseline.id));
+    await db.delete(scenarios).where(eq(scenarios.id, baseline.id));
+    console.log("Deleted locked Baseline Q1 2026 scenario");
+  }
+
+  const forecast = allScenarios.find(s => s.name === "Forecast Q1 2026");
+  if (forecast) {
+    await db.update(scenarios).set({ name: "Actual Schedule", type: "actual" }).where(eq(scenarios.id, forecast.id));
+    console.log("Renamed Forecast Q1 2026 to Actual Schedule");
+  }
+}
+
 export async function seedDatabase() {
   await cleanupOrphanedData();
+  await cleanupScenarios();
   await seedPresets();
 
   const existingLanes = await db.select().from(lanes);
@@ -78,13 +107,11 @@ export async function seedDatabase() {
 
   const allLanes = await db.select().from(lanes);
 
-  const [forecastScenario] = await db.insert(scenarios).values([
-    { name: "Baseline Q1 2026", type: "baseline", locked: true },
-    { name: "Forecast Q1 2026", type: "forecast", locked: false },
+  const [actualScenario] = await db.insert(scenarios).values([
+    { name: "Actual Schedule", type: "actual", locked: false },
   ]).returning();
 
-  const allScenarios = await db.select().from(scenarios);
-  const forecast = allScenarios.find(s => s.type === "forecast")!;
+  const forecast = actualScenario;
 
   const createdJobs = await db.insert(fracJobs).values([
     {

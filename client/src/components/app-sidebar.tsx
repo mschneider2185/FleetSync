@@ -35,7 +35,7 @@ export function AppSidebar() {
             <Truck className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-semibold tracking-tight">SandPlan</p>
+            <p className="text-sm font-semibold tracking-tight">FleetSync</p>
             <p className="text-[11px] text-muted-foreground">Fleet Logistics</p>
           </div>
         </div>

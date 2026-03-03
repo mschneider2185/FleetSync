@@ -1,4 +1,4 @@
-# SandPlan - Sand Hauling Logistics Planner
+# FleetSync - Sand Hauling Logistics Planner
 
 ## Overview
 A web-based planning tool to visualize and manage sand-hauling fleet allocations across multiple fracs, with an interactive Gantt schedule and daily allocation grid, supporting rapid replans.
@@ -27,7 +27,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
 - Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
-- Scenario management (Baseline/Forecast/Actual/Sandbox) with clone, sandbox creation, and role-based access (planner vs viewer)
+- Scenario management (Actual/Sandbox) with sandbox creation and role-based access (planner vs viewer)
 - Lane cascading: extending a frac's end date auto-pushes downstream fracs in the same lane
 - Frac job builder with sand plan details (including configurable load+unload time)
 - Hauler management with capacity tracking
@@ -92,7 +92,6 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 ### CRUD
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
 - `/api/scenarios` - GET, POST; `/api/scenarios/:id` - PATCH, DELETE
-- `/api/scenarios/:id/clone` - POST (clone with schedules + allocations in transaction)
 - `/api/scenarios/:id/create-sandbox` - POST (create sandbox from scenario)
 - `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE
 - `/api/scenarios/:scenarioId/schedules` - GET
@@ -110,5 +109,5 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 
 ## Role-Based Access
 - `PLANNER_USERNAMES` env var: comma-separated Replit usernames; if empty, all users are planners
-- Planners can edit Forecast/Baseline/Actual scenarios, create presets, clone scenarios
+- Planners can edit Actual scenarios, create presets, create sandboxes
 - Viewers can create sandboxes and edit their own sandbox scenarios
