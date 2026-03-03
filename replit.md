@@ -109,6 +109,7 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/auth/role` - GET (returns { isPlanner: boolean })
 
 ## Role-Based Access
-- `PLANNER_USERNAMES` env var: comma-separated Replit usernames; if empty, all users are planners
-- Planners can edit Actual scenarios, create presets, create sandboxes
-- Viewers can create sandboxes and edit their own sandbox scenarios
+- `PLANNER_USERNAMES` env var: comma-separated Replit usernames; currently set to `mikeschneider21`; if empty, all users are planners
+- Planners can edit Actual scenarios, create presets, create sandboxes, permanently delete frac jobs
+- Viewers can create sandboxes, edit their own sandbox scenarios, and remove fracs from their sandboxes
+- Sandbox delete button in scenario selector (trash icon, only shown for sandbox type scenarios)
