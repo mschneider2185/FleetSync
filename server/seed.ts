@@ -4,8 +4,18 @@ import { eq } from "drizzle-orm";
 
 async function cleanupOrphanedData() {
   const allFracIds = (await db.select({ id: fracJobs.id }).from(fracJobs)).map(f => f.id);
+
+  const allEvents = await db.select().from(fracDailyEvents);
+  const orphanedEvents = allEvents.filter(e => !allFracIds.includes(e.fracJobId));
+  if (orphanedEvents.length > 0) {
+    for (const e of orphanedEvents) {
+      await db.delete(fracDailyEvents).where(eq(fracDailyEvents.id, e.id));
+    }
+    console.log(`Cleaned up ${orphanedEvents.length} orphaned events`);
+  }
+
   if (allFracIds.length === 0) return;
-  
+
   const allSchedules = await db.select().from(scenarioFracSchedules);
   const orphanedSchedules = allSchedules.filter(s => !allFracIds.includes(s.fracJobId));
   if (orphanedSchedules.length > 0) {
@@ -96,22 +106,31 @@ export async function seedDatabase() {
   await seedPresets();
 
   const existingLanes = await db.select().from(lanes);
-  if (existingLanes.length > 0) return;
+  const existingFracs = await db.select().from(fracJobs);
 
-  const [lane1] = await db.insert(lanes).values([
-    { name: "EVO1", color: "#3b82f6", sortOrder: 0 },
-    { name: "EVO10", color: "#f97316", sortOrder: 1 },
-    { name: "FLEET3", color: "#10b981", sortOrder: 2 },
-    { name: "FLEET4", color: "#8b5cf6", sortOrder: 3 },
-  ]).returning();
+  if (existingLanes.length > 0 && existingFracs.length > 0) return;
 
-  const allLanes = await db.select().from(lanes);
+  let allLanes = existingLanes;
+  if (existingLanes.length === 0) {
+    await db.insert(lanes).values([
+      { name: "EVO1", color: "#3b82f6", sortOrder: 0 },
+      { name: "EVO10", color: "#f97316", sortOrder: 1 },
+      { name: "FLEET3", color: "#10b981", sortOrder: 2 },
+      { name: "FLEET4", color: "#8b5cf6", sortOrder: 3 },
+    ]);
+    allLanes = await db.select().from(lanes);
+  }
 
-  const [actualScenario] = await db.insert(scenarios).values([
-    { name: "Actual Schedule", type: "actual", locked: false },
-  ]).returning();
+  let existingScenarios = await db.select().from(scenarios);
+  let forecast = existingScenarios.find(s => s.type === "actual") || existingScenarios[0];
+  if (!forecast) {
+    const [actualScenario] = await db.insert(scenarios).values([
+      { name: "Actual Schedule", type: "actual", locked: false },
+    ]).returning();
+    forecast = actualScenario;
+  }
 
-  const forecast = actualScenario;
+  if (existingFracs.length > 0) return;
 
   const createdJobs = await db.insert(fracJobs).values([
     {
@@ -168,7 +187,7 @@ export async function seedDatabase() {
     },
     {
       padName: "HAWK15",
-      laneId: allLanes[3].id,
+      laneId: allLanes[Math.min(3, allLanes.length - 1)].id,
       customer: "Diamondback",
       basin: "Permian",
       stagesPerDay: 9,
@@ -229,22 +248,29 @@ export async function seedDatabase() {
     },
   ]);
 
-  const createdHaulers = await db.insert(haulers).values([
-    { name: "ET", splitAllowed: false, homeArea: "Midland", defaultMaxTrucksPerShift: 15, defaultMinCommittedTrucksPerShift: 8 },
-    { name: "HWE", splitAllowed: false, homeArea: "Pecos", defaultMaxTrucksPerShift: 12, defaultMinCommittedTrucksPerShift: 5 },
-    { name: "Seven Point", splitAllowed: false, homeArea: "Odessa", defaultMaxTrucksPerShift: 10, defaultMinCommittedTrucksPerShift: 4 },
-    { name: "Revolution", splitAllowed: true, homeArea: "Midland", defaultMaxTrucksPerShift: 20, defaultMinCommittedTrucksPerShift: 10 },
-    { name: "Patriot", splitAllowed: false, homeArea: "Carlsbad", defaultMaxTrucksPerShift: 8, defaultMinCommittedTrucksPerShift: 3 },
-  ]).returning();
+  const existingHaulers = await db.select().from(haulers);
+  let createdHaulers = existingHaulers;
+  if (existingHaulers.length === 0) {
+    createdHaulers = await db.insert(haulers).values([
+      { name: "ET", splitAllowed: false, homeArea: "Midland", defaultMaxTrucksPerShift: 15, defaultMinCommittedTrucksPerShift: 8 },
+      { name: "HWE", splitAllowed: false, homeArea: "Pecos", defaultMaxTrucksPerShift: 12, defaultMinCommittedTrucksPerShift: 5 },
+      { name: "Seven Point", splitAllowed: false, homeArea: "Odessa", defaultMaxTrucksPerShift: 10, defaultMinCommittedTrucksPerShift: 4 },
+      { name: "Revolution", splitAllowed: true, homeArea: "Midland", defaultMaxTrucksPerShift: 20, defaultMinCommittedTrucksPerShift: 10 },
+      { name: "Patriot", splitAllowed: false, homeArea: "Carlsbad", defaultMaxTrucksPerShift: 8, defaultMinCommittedTrucksPerShift: 3 },
+    ]).returning();
+  }
 
-  await db.insert(allocationBlocks).values([
-    { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: createdHaulers[0].id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 8 },
-    { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: createdHaulers[1].id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 4 },
-    { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: createdHaulers[3].id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 10 },
-    { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: createdHaulers[2].id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 4 },
-    { scenarioId: forecast.id, fracJobId: createdJobs[3].id, haulerId: createdHaulers[4].id, startDate: "2026-03-01", endDate: "2026-03-15", trucksPerShift: 6 },
-    { scenarioId: forecast.id, fracJobId: createdJobs[4].id, haulerId: createdHaulers[3].id, startDate: "2026-03-10", endDate: "2026-03-20", trucksPerShift: 8 },
-  ]);
+  if (createdHaulers.length >= 5) {
+    const haulerByName = (name: string) => createdHaulers.find(h => h.name === name) || createdHaulers[0];
+    await db.insert(allocationBlocks).values([
+      { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: haulerByName("ET").id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 8 },
+      { scenarioId: forecast.id, fracJobId: createdJobs[0].id, haulerId: haulerByName("HWE").id, startDate: "2026-02-22", endDate: "2026-03-03", trucksPerShift: 4 },
+      { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: haulerByName("Revolution").id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 10 },
+      { scenarioId: forecast.id, fracJobId: createdJobs[2].id, haulerId: haulerByName("Seven Point").id, startDate: "2026-02-25", endDate: "2026-03-10", trucksPerShift: 4 },
+      { scenarioId: forecast.id, fracJobId: createdJobs[3].id, haulerId: haulerByName("Patriot").id, startDate: "2026-03-01", endDate: "2026-03-15", trucksPerShift: 6 },
+      { scenarioId: forecast.id, fracJobId: createdJobs[4].id, haulerId: haulerByName("Revolution").id, startDate: "2026-03-10", endDate: "2026-03-20", trucksPerShift: 8 },
+    ]);
+  }
 
   console.log("Database seeded successfully");
 }

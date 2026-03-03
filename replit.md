@@ -93,7 +93,8 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
 - `/api/scenarios` - GET, POST; `/api/scenarios/:id` - PATCH, DELETE
 - `/api/scenarios/:id/create-sandbox` - POST (create sandbox from scenario)
-- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE
+- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE (planner-only global delete)
+- `/api/scenarios/:scenarioId/frac-schedules/:fracJobId` - DELETE (remove frac from scenario only; used by sandboxes)
 - `/api/scenarios/:scenarioId/schedules` - GET
 - `/api/schedules` - POST; `/api/schedules/:id` - PATCH (with lane cascading), DELETE
 - `/api/haulers` - GET, POST; `/api/haulers/:id` - PATCH, DELETE
