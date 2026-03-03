@@ -93,8 +93,7 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
 - `/api/scenarios` - GET, POST; `/api/scenarios/:id` - PATCH, DELETE
 - `/api/scenarios/:id/create-sandbox` - POST (create sandbox from scenario)
-- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE (planner-only global delete)
-- `/api/scenarios/:scenarioId/frac-schedules/:fracJobId` - DELETE (remove frac from scenario only; used by sandboxes)
+- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE
 - `/api/scenarios/:scenarioId/schedules` - GET
 - `/api/schedules` - POST; `/api/schedules/:id` - PATCH (with lane cascading), DELETE
 - `/api/haulers` - GET, POST; `/api/haulers/:id` - PATCH, DELETE
@@ -109,7 +108,6 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/auth/role` - GET (returns { isPlanner: boolean })
 
 ## Role-Based Access
-- `PLANNER_USERNAMES` env var: comma-separated Replit usernames; currently set to `mikeschneider21`; if empty, all users are planners
-- Planners can edit Actual scenarios, create presets, create sandboxes, permanently delete frac jobs
-- Viewers can create sandboxes, edit their own sandbox scenarios, and remove fracs from their sandboxes
-- Sandbox delete button in scenario selector (trash icon, only shown for sandbox type scenarios)
+- `PLANNER_USERNAMES` env var: comma-separated Replit usernames; if empty, all users are planners
+- Planners can edit Actual scenarios, create presets, create sandboxes
+- Viewers can create sandboxes and edit their own sandbox scenarios

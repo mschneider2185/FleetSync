@@ -33,7 +33,6 @@ export interface IStorage {
   createFracJob(job: InsertFracJob): Promise<FracJob>;
   updateFracJob(id: number, job: Partial<InsertFracJob>): Promise<FracJob | undefined>;
   deleteFracJob(id: number): Promise<void>;
-  removeFracFromScenario(scenarioId: number, fracJobId: number): Promise<void>;
 
   getSchedulesByScenario(scenarioId: number): Promise<ScenarioFracSchedule[]>;
   getSchedule(id: number): Promise<ScenarioFracSchedule | undefined>;
@@ -132,19 +131,7 @@ export class DatabaseStorage implements IStorage {
   async deleteFracJob(id: number): Promise<void> {
     await db.delete(allocationBlocks).where(eq(allocationBlocks.fracJobId, id));
     await db.delete(scenarioFracSchedules).where(eq(scenarioFracSchedules.fracJobId, id));
-    await db.delete(fracDailyEvents).where(eq(fracDailyEvents.fracJobId, id));
     await db.delete(fracJobs).where(eq(fracJobs.id, id));
-  }
-  async removeFracFromScenario(scenarioId: number, fracJobId: number): Promise<void> {
-    await db.delete(allocationBlocks).where(
-      and(eq(allocationBlocks.scenarioId, scenarioId), eq(allocationBlocks.fracJobId, fracJobId))
-    );
-    await db.delete(scenarioFracSchedules).where(
-      and(eq(scenarioFracSchedules.scenarioId, scenarioId), eq(scenarioFracSchedules.fracJobId, fracJobId))
-    );
-    await db.delete(fracDailyEvents).where(
-      and(eq(fracDailyEvents.scenarioId, scenarioId), eq(fracDailyEvents.fracJobId, fracJobId))
-    );
   }
 
   async getSchedulesByScenario(scenarioId: number): Promise<ScenarioFracSchedule[]> {

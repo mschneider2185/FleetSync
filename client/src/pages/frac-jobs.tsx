@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, CalendarPlus, Copy } from "lucide-react";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
-import type { Lane, FracJob, Scenario, ScenarioFracSchedule } from "@shared/schema";
+import type { Lane, FracJob, ScenarioFracSchedule } from "@shared/schema";
 
 export default function FracJobs() {
   const { activeScenarioId } = useScenario();
@@ -38,9 +38,6 @@ export default function FracJobs() {
 
   const { data: fracJobs = [], isLoading } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
-  const { data: allScenarios = [] } = useQuery<Scenario[]>({ queryKey: ["/api/scenarios"] });
-  const activeScenario = allScenarios.find(s => s.id === activeScenarioId);
-  const isSandbox = activeScenario?.type === "sandbox";
   const { data: schedules = [] } = useQuery<ScenarioFracSchedule[]>({
     queryKey: ["/api/scenarios", activeScenarioId, "schedules"],
     queryFn: async () => {
@@ -58,17 +55,7 @@ export default function FracJobs() {
     mutationFn: (id: number) => apiRequest("DELETE", `/api/frac-jobs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "schedules"] });
-      toast({ title: "Frac job permanently deleted" });
-    },
-  });
-
-  const removeFromScenarioMutation = useMutation({
-    mutationFn: ({ scenarioId, fracJobId }: { scenarioId: number; fracJobId: number }) =>
-      apiRequest("DELETE", `/api/scenarios/${scenarioId}/frac-schedules/${fracJobId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "schedules"] });
-      toast({ title: "Frac removed from this sandbox" });
+      toast({ title: "Frac job deleted" });
     },
   });
 
@@ -236,18 +223,7 @@ export default function FracJobs() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        title={isSandbox && schedule ? "Remove from sandbox" : "Delete frac job"}
-                        onClick={() => {
-                          if (isSandbox && activeScenarioId && schedule) {
-                            if (confirm("Remove this frac from the current sandbox? The frac will still exist in other scenarios.")) {
-                              removeFromScenarioMutation.mutate({ scenarioId: activeScenarioId, fracJobId: job.id });
-                            }
-                          } else {
-                            if (confirm("Permanently delete this frac job from ALL scenarios? This cannot be undone.")) {
-                              deleteMutation.mutate(job.id);
-                            }
-                          }
-                        }}
+                        onClick={() => deleteMutation.mutate(job.id)}
                         data-testid={`button-delete-frac-${job.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />

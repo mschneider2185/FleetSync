@@ -260,19 +260,8 @@ export async function registerRoutes(
       throw e;
     }
   });
-  app.delete("/api/frac-jobs/:id", isAuthenticated, async (req: any, res) => {
-    if (!isPlanner(req)) {
-      return res.status(403).json({ message: "Only planners can permanently delete frac jobs" });
-    }
+  app.delete("/api/frac-jobs/:id", isAuthenticated, async (req, res) => {
     await storage.deleteFracJob(Number(req.params.id));
-    res.json({ ok: true });
-  });
-
-  app.delete("/api/scenarios/:scenarioId/frac-schedules/:fracJobId", isAuthenticated, async (req: any, res) => {
-    const scenarioId = Number(req.params.scenarioId);
-    const fracJobId = Number(req.params.fracJobId);
-    if (!(await checkScenarioEditable(req, res, scenarioId))) return;
-    await storage.removeFracFromScenario(scenarioId, fracJobId);
     res.json({ ok: true });
   });
 

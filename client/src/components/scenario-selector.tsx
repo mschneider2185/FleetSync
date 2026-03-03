@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Lock, FlaskConical, Trash2 } from "lucide-react";
+import { Lock, FlaskConical } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -62,23 +62,6 @@ export function ScenarioSelector() {
       else setActiveScenarioId(scenarios[0].id);
     }
   }, [scenarios, activeScenarioId, setActiveScenarioId]);
-
-  const deleteScenarioMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/scenarios/${id}`);
-    },
-    onSuccess: async (_data, deletedId) => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/scenarios"] });
-      const fresh: Scenario[] = queryClient.getQueryData(["/api/scenarios"]) || [];
-      const remaining = fresh.filter(s => s.id !== deletedId);
-      const next = remaining.find(s => s.type === "actual") || remaining[0];
-      if (next) setActiveScenarioId(next.id);
-      toast({ title: "Scenario deleted" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
 
   const sandboxMutation = useMutation({
     mutationFn: async () => {
@@ -135,24 +118,6 @@ export function ScenarioSelector() {
           {activeScenario.type.toUpperCase()}
           {activeScenario.locked && " (locked)"}
         </Badge>
-      )}
-
-      {activeScenario && activeScenario.type === "sandbox" && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          title="Delete this sandbox"
-          onClick={() => {
-            if (confirm(`Delete sandbox "${activeScenario.name}"? This will remove all its schedules and allocations.`)) {
-              deleteScenarioMutation.mutate(activeScenario.id);
-            }
-          }}
-          disabled={deleteScenarioMutation.isPending}
-          data-testid="button-delete-scenario"
-        >
-          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-        </Button>
       )}
 
       <Dialog open={sandboxDialogOpen} onOpenChange={setSandboxDialogOpen}>
