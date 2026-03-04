@@ -612,7 +612,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
                   const fracNeedsTotal = validSchedules
-                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
+                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
                     .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
                   const shortfall = fracNeedsTotal > 0 && totalAllDay < fracNeedsTotal;
                   const delta = totalAllDay - fracNeedsTotal;
@@ -643,7 +643,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                 </td>
                 {dateStrings.map((ds, i) => {
                   const fracNeedsTotal = validSchedules
-                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned"))
+                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
                     .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
                   return (
                     <td
