@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Download } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 import { getEffectiveTrucksForDate } from "@shared/schema";
 
@@ -320,6 +320,19 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
           )}
         </div>
         <div className="flex items-center gap-2">
+          {!compact && activeScenarioId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.open(`/api/scenarios/${activeScenarioId}/export`, "_blank");
+              }}
+              data-testid="button-export-csv"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              Export CSV
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setStartDate(d => addDays(d, -7))} data-testid="button-grid-prev">
             <ChevronLeft className="w-4 h-4" />
           </Button>

@@ -20,10 +20,13 @@ import {
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, CalendarPlus, Copy } from "lucide-react";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
-import type { Lane, FracJob, ScenarioFracSchedule } from "@shared/schema";
+import type { Lane, FracJob, ScenarioFracSchedule, Scenario } from "@shared/schema";
 
 export default function FracJobs() {
   const { activeScenarioId } = useScenario();
+  const { data: scenarios = [] } = useQuery<Scenario[]>({ queryKey: ["/api/scenarios"] });
+  const activeScenario = scenarios.find(s => s.id === activeScenarioId);
+  const isSandbox = activeScenario?.type === "sandbox";
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editJob, setEditJob] = useState<FracJob | null>(null);
@@ -52,10 +55,16 @@ export default function FracJobs() {
   const scheduleMap = new Map(schedules.map(s => [s.fracJobId, s]));
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/frac-jobs/${id}`),
+    mutationFn: (id: number) => {
+      const url = isSandbox && activeScenarioId
+        ? `/api/frac-jobs/${id}?scenarioId=${activeScenarioId}`
+        : `/api/frac-jobs/${id}`;
+      return apiRequest("DELETE", url);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs"] });
-      toast({ title: "Frac job deleted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "schedules"] });
+      toast({ title: isSandbox ? "Frac removed from sandbox" : "Frac job deleted" });
     },
   });
 
@@ -212,18 +221,21 @@ export default function FracJobs() {
                       >
                         <Copy className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => { setEditJob(job); setDialogOpen(true); }}
-                        data-testid={`button-edit-frac-${job.id}`}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
+                      {!isSandbox && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => { setEditJob(job); setDialogOpen(true); }}
+                          data-testid={`button-edit-frac-${job.id}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => deleteMutation.mutate(job.id)}
+                        title={isSandbox ? "Remove from sandbox" : "Delete frac job"}
                         data-testid={`button-delete-frac-${job.id}`}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />

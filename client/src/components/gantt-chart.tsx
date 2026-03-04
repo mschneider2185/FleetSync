@@ -110,17 +110,20 @@ export function GanttChart({
     origStart: string;
     origEnd: string;
     deltaDays: number;
+    mode: "move" | "resize-left" | "resize-right";
   } | null>(null);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent, schedule: ScenarioFracSchedule) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent, schedule: ScenarioFracSchedule, mode: "move" | "resize-left" | "resize-right" = "move") => {
     if (isLocked) return;
     e.preventDefault();
+    e.stopPropagation();
     setDragState({
       scheduleId: schedule.id,
       startX: e.clientX,
       origStart: schedule.plannedStartDate,
       origEnd: schedule.plannedEndDate,
       deltaDays: 0,
+      mode,
     });
   }, [isLocked]);
 
@@ -136,8 +139,33 @@ export function GanttChart({
       setDragState(null);
       return;
     }
-    const newStart = format(addDays(parseISO(dragState.origStart), dragState.deltaDays), "yyyy-MM-dd");
-    const newEnd = format(addDays(parseISO(dragState.origEnd), dragState.deltaDays), "yyyy-MM-dd");
+
+    let newStart: string;
+    let newEnd: string;
+
+    if (dragState.mode === "move") {
+      newStart = format(addDays(parseISO(dragState.origStart), dragState.deltaDays), "yyyy-MM-dd");
+      newEnd = format(addDays(parseISO(dragState.origEnd), dragState.deltaDays), "yyyy-MM-dd");
+    } else if (dragState.mode === "resize-left") {
+      const proposedStart = addDays(parseISO(dragState.origStart), dragState.deltaDays);
+      const endDate = parseISO(dragState.origEnd);
+      if (proposedStart > endDate) {
+        setDragState(null);
+        return;
+      }
+      newStart = format(proposedStart, "yyyy-MM-dd");
+      newEnd = dragState.origEnd;
+    } else {
+      const startDate = parseISO(dragState.origStart);
+      const proposedEnd = addDays(parseISO(dragState.origEnd), dragState.deltaDays);
+      if (proposedEnd < startDate) {
+        setDragState(null);
+        return;
+      }
+      newStart = dragState.origStart;
+      newEnd = format(proposedEnd, "yyyy-MM-dd");
+    }
+
     onScheduleUpdate?.(dragState.scheduleId, newStart, newEnd);
     setDragState(null);
   }, [dragState, onScheduleUpdate]);
@@ -417,40 +445,73 @@ export function GanttChart({
                     const barConflicts = getBarConflicts(schedule);
                     const isDragging = dragState?.scheduleId === schedule.id;
                     const dragOffset = isDragging ? dragState.deltaDays : 0;
-                    const left = (startOffset + dragOffset) * dayWidth + 2;
-                    const width = duration * dayWidth - 4;
+
+                    let visualStartOffset = startOffset;
+                    let visualDuration = duration;
+                    if (isDragging) {
+                      if (dragState.mode === "move") {
+                        visualStartOffset = startOffset + dragOffset;
+                      } else if (dragState.mode === "resize-left") {
+                        visualStartOffset = startOffset + dragOffset;
+                        visualDuration = duration - dragOffset;
+                      } else if (dragState.mode === "resize-right") {
+                        visualDuration = duration + dragOffset;
+                      }
+                      if (visualDuration < 1) visualDuration = 1;
+                    }
+
+                    const left = visualStartOffset * dayWidth + 2;
+                    const width = visualDuration * dayWidth - 4;
                     const showBarText = width > 60;
                     const showTruckCount = width > 40;
+                    const canResize = !isLocked && onScheduleUpdate;
 
                     return (
                       <Tooltip key={schedule.id}>
                         <TooltipTrigger asChild>
                           <div
-                            className={`absolute top-2 rounded-md cursor-grab select-none flex items-center gap-1.5 px-2.5 transition-shadow ${
-                              isDragging ? "shadow-lg cursor-grabbing z-20 opacity-90" : "hover:shadow-md z-5"
-                            } ${STATUS_STYLES[schedule.status] || ""}`}
+                            className={`absolute top-2 rounded-md select-none flex items-center transition-shadow group ${
+                              isDragging && dragState.mode === "move" ? "shadow-lg cursor-grabbing z-20 opacity-90" :
+                              isDragging ? "shadow-lg z-20 opacity-90" :
+                              "hover:shadow-md z-5"
+                            } ${!isDragging && !isLocked ? "cursor-grab" : ""} ${STATUS_STYLES[schedule.status] || ""}`}
                             style={{
                               left,
                               width: Math.max(width, dayWidth > 10 ? 40 : 8),
                               height: ROW_HEIGHT - 16,
                               backgroundColor: lane.color + "22",
                               borderLeft: `3px solid ${lane.color}`,
-                              overflow: "hidden",
                             }}
-                            onMouseDown={(e) => handleMouseDown(e, schedule)}
+                            onMouseDown={(e) => handleMouseDown(e, schedule, "move")}
                             onClick={() => onFracClick?.(schedule.fracJobId)}
                             data-testid={`bar-frac-${schedule.fracJobId}`}
                           >
-                            {showBarText && (
-                              <span className="text-xs font-medium truncate">{frac.padName}</span>
+                            {canResize && (
+                              <div
+                                className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-10 hover:bg-foreground/10 rounded-l-md"
+                                onMouseDown={(e) => handleMouseDown(e, schedule, "resize-left")}
+                                data-testid={`handle-resize-left-${schedule.fracJobId}`}
+                              />
                             )}
-                            {showTruckCount && (
-                              <span className="text-[10px] text-muted-foreground shrink-0">
-                                {schedule.requiredTrucksPerShift}t
-                              </span>
-                            )}
-                            {showBarText && barConflicts.length > 0 && (
-                              <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                            <div className="flex items-center gap-1.5 px-2.5 overflow-hidden flex-1 min-w-0">
+                              {showBarText && (
+                                <span className="text-xs font-medium truncate">{frac.padName}</span>
+                              )}
+                              {showTruckCount && (
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {schedule.requiredTrucksPerShift}t
+                                </span>
+                              )}
+                              {showBarText && barConflicts.length > 0 && (
+                                <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                              )}
+                            </div>
+                            {canResize && (
+                              <div
+                                className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 hover:bg-foreground/10 rounded-r-md"
+                                onMouseDown={(e) => handleMouseDown(e, schedule, "resize-right")}
+                                data-testid={`handle-resize-right-${schedule.fracJobId}`}
+                              />
                             )}
                           </div>
                         </TooltipTrigger>

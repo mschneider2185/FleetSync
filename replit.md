@@ -93,7 +93,7 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
 - `/api/scenarios` - GET, POST; `/api/scenarios/:id` - PATCH, DELETE
 - `/api/scenarios/:id/create-sandbox` - POST (create sandbox from scenario)
-- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE
+- `/api/frac-jobs` - GET, POST; `/api/frac-jobs/:id` - GET, PATCH, DELETE (?scenarioId= for sandbox-scoped removal)
 - `/api/scenarios/:scenarioId/schedules` - GET
 - `/api/schedules` - POST; `/api/schedules/:id` - PATCH (with lane cascading), DELETE
 - `/api/haulers` - GET, POST; `/api/haulers/:id` - PATCH, DELETE
@@ -101,13 +101,37 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/capacity-exceptions` - POST; `/api/capacity-exceptions/:id` - DELETE
 - `/api/scenarios/:scenarioId/allocations` - GET
 - `/api/allocations` - POST; `/api/allocations/:id` - PATCH, DELETE
-- `/api/scenarios/:scenarioId/conflicts` - GET (computed conflict detection)
+- `/api/scenarios/:scenarioId/conflicts` - GET (computed conflict detection with detailed explanations)
+- `/api/scenarios/:scenarioId/export` - GET (CSV export of allocation grid)
 - `/api/presets` - GET (?type= filter), POST, DELETE /:id (planner only)
 - `/api/frac-jobs/:id/events` - GET (?scenarioId=), POST
 - `/api/events/:id` - PATCH, DELETE
 - `/api/auth/role` - GET (returns { isPlanner: boolean })
 
+## Sandbox Isolation
+- Frac jobs are global entities shared across scenarios; schedules/allocations are per-scenario
+- Deleting a frac in sandbox mode only removes its schedule/allocations from that sandbox (not the global frac job)
+- Editing frac global properties (pad name, customer) is blocked in sandbox mode
+- Global frac deletion requires planner role and is only allowed from non-sandbox scenarios
+
+## Capacity Hard-Stop
+- Allocation POST/PATCH validates hauler capacity: if saving would exceed `defaultMaxTrucksPerShift` (or date-specific exceptions), returns 409
+- Frac over/under supply detected in conflict engine but does not block saves
+
+## CSV Export
+- `GET /api/scenarios/:scenarioId/export` returns CSV file with Lane, Frac, Hauler columns + date columns
+- Export button in allocation grid toolbar (non-compact mode only)
+
+## Gantt Features
+- Drag entire bar to move schedule start+end together
+- Drag left/right edge to resize schedule (change start or end date independently)
+- Resize handles visible on hover, respects locked scenario
+
+## Conflict Engine
+- Conflicts include detailed math: per-hauler breakdowns, per-frac assignments, shortage/overage numbers
+- Capacity exceptions properly consulted per-date for hauler over-capacity checks
+
 ## Role-Based Access
 - `PLANNER_USERNAMES` env var: comma-separated Replit usernames; if empty, all users are planners
-- Planners can edit Actual scenarios, create presets, create sandboxes
+- Planners can edit Actual scenarios, create presets, create sandboxes, permanently delete frac jobs
 - Viewers can create sandboxes and edit their own sandbox scenarios

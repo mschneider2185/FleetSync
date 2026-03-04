@@ -260,7 +260,21 @@ export async function registerRoutes(
       throw e;
     }
   });
-  app.delete("/api/frac-jobs/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/frac-jobs/:id", isAuthenticated, async (req: any, res) => {
+    const scenarioId = req.query.scenarioId ? Number(req.query.scenarioId) : null;
+
+    if (scenarioId) {
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ message: "Scenario not found" });
+      if (!canEditScenario(req, scenario)) return res.status(403).json({ message: "Permission denied" });
+
+      if (scenario.type === "sandbox") {
+        await storage.removeFracFromScenario(scenarioId, Number(req.params.id));
+        return res.json({ ok: true });
+      }
+    }
+
+    if (!isPlanner(req)) return res.status(403).json({ message: "Only planners can permanently delete frac jobs" });
     await storage.deleteFracJob(Number(req.params.id));
     res.json({ ok: true });
   });
@@ -414,6 +428,40 @@ export async function registerRoutes(
     const data = await storage.getAllocationsByScenario(scenarioId);
     res.json(data);
   });
+  async function checkHaulerCapacity(
+    scenarioId: number, haulerId: number, trucksPerShift: number,
+    startDate: string, endDate: string, excludeAllocId?: number
+  ): Promise<string | null> {
+    const hauler = await storage.getHauler(haulerId);
+    if (!hauler) return null;
+    const maxCap = hauler.defaultMaxTrucksPerShift;
+    const exceptions = await storage.getCapacityExceptions(haulerId);
+    const allAllocations = await storage.getAllocationsByScenario(scenarioId);
+
+    let d = new Date(startDate);
+    const end = new Date(endDate);
+    while (d <= end) {
+      const ds = d.toISOString().split("T")[0];
+      const exception = exceptions.find(e => e.date === ds);
+      const cap = exception ? exception.maxTrucksPerShift : maxCap;
+
+      let totalOnDay = trucksPerShift;
+      for (const a of allAllocations) {
+        if (a.haulerId !== haulerId) continue;
+        if (excludeAllocId && a.id === excludeAllocId) continue;
+        if (a.startDate <= ds && a.endDate >= ds) {
+          totalOnDay += a.trucksPerShift;
+        }
+      }
+
+      if (totalOnDay > cap) {
+        return `${hauler.name} would have ${totalOnDay} trucks assigned on ${ds} but max capacity is ${cap}`;
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return null;
+  }
+
   app.post("/api/allocations", isAuthenticated, async (req: any, res) => {
     try {
       const validated = validateBody(insertAllocationBlockSchema, req.body);
@@ -424,6 +472,13 @@ export async function registerRoutes(
       );
       if (overlapping.length > 0) {
         return res.status(409).json({ message: "An allocation already exists for this hauler and frac job on the specified dates" });
+      }
+      const capacityError = await checkHaulerCapacity(
+        validated.scenarioId, validated.haulerId, validated.trucksPerShift,
+        validated.startDate, validated.endDate
+      );
+      if (capacityError) {
+        return res.status(409).json({ message: capacityError });
       }
       const data = await storage.createAllocation(validated);
       res.json(data);
@@ -451,6 +506,17 @@ export async function registerRoutes(
         if (overlapping.length > 0) {
           return res.status(409).json({ message: "This change would overlap with an existing allocation" });
         }
+      }
+      const capacityError = await checkHaulerCapacity(
+        validated.scenarioId ?? existing.scenarioId,
+        validated.haulerId ?? existing.haulerId,
+        validated.trucksPerShift ?? existing.trucksPerShift,
+        validated.startDate ?? existing.startDate,
+        validated.endDate ?? existing.endDate,
+        allocId
+      );
+      if (capacityError) {
+        return res.status(409).json({ message: capacityError });
       }
       const data = await storage.updateAllocation(allocId, validated);
       if (!data) return res.status(404).json({ message: "Not found" });
@@ -540,14 +606,91 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  app.get("/api/scenarios/:scenarioId/export", isAuthenticated, async (req, res) => {
+    const scenarioId = Number(req.params.scenarioId);
+    if (isNaN(scenarioId)) return res.status(400).json({ message: "Invalid scenario ID" });
+
+    const [allSchedules, allAllocations, allHaulers, allFracJobs, allLanes] = await Promise.all([
+      storage.getSchedulesByScenario(scenarioId),
+      storage.getAllocationsByScenario(scenarioId),
+      storage.getHaulers(),
+      storage.getFracJobs(),
+      storage.getLanes(),
+    ]);
+
+    const fracMap = new Map(allFracJobs.map(f => [f.id, f]));
+    const haulerMap = new Map(allHaulers.map(h => [h.id, h]));
+    const laneMap = new Map(allLanes.map(l => [l.id, l]));
+
+    const allDates = new Set<string>();
+    allSchedules.forEach(s => {
+      let d = new Date(s.plannedStartDate);
+      const end = new Date(s.plannedEndDate);
+      while (d <= end) {
+        allDates.add(d.toISOString().split("T")[0]);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+    const sortedDates = Array.from(allDates).sort();
+    if (sortedDates.length === 0) {
+      const scenario = await storage.getScenario(scenarioId);
+      const filename = `FleetSync_${(scenario?.name || "export").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send("Lane,Frac,Hauler\n");
+    }
+
+    const escape = (val: string | number) => {
+      const s = String(val);
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows: string[] = [];
+    rows.push(["Lane", "Frac", "Hauler", ...sortedDates].map(escape).join(","));
+
+    for (const schedule of allSchedules) {
+      const frac = fracMap.get(schedule.fracJobId);
+      if (!frac) continue;
+      const lane = laneMap.get(frac.laneId);
+      const fracAllocations = allAllocations.filter(a => a.fracJobId === schedule.fracJobId);
+      const haulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+
+      if (haulerIds.length === 0) {
+        const values = sortedDates.map(ds =>
+          ds >= schedule.plannedStartDate && ds <= schedule.plannedEndDate ? "0" : ""
+        );
+        rows.push([escape(lane?.name || ""), escape(frac.padName), "", ...values].join(","));
+      } else {
+        for (const hId of haulerIds) {
+          const hauler = haulerMap.get(hId);
+          const hAllocations = fracAllocations.filter(a => a.haulerId === hId);
+          const values = sortedDates.map(ds => {
+            if (ds < schedule.plannedStartDate || ds > schedule.plannedEndDate) return "";
+            const alloc = hAllocations.find(a => a.startDate <= ds && a.endDate >= ds);
+            return alloc ? String(alloc.trucksPerShift) : "0";
+          });
+          rows.push([escape(lane?.name || ""), escape(frac.padName), escape(hauler?.name || ""), ...values].join(","));
+        }
+      }
+    }
+
+    const scenario = await storage.getScenario(scenarioId);
+    const filename = `FleetSync_${(scenario?.name || "export").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(rows.join("\n"));
+  });
+
   app.get("/api/scenarios/:scenarioId/conflicts", isAuthenticated, async (req, res) => {
     const scenarioId = Number(req.params.scenarioId);
     if (isNaN(scenarioId)) return res.status(400).json({ message: "Invalid scenario ID" });
 
-    const [schedules, allocations, allHaulers] = await Promise.all([
+    const [schedules, allocations, allHaulers, fracJobs] = await Promise.all([
       storage.getSchedulesByScenario(scenarioId),
       storage.getAllocationsByScenario(scenarioId),
       storage.getHaulers(),
+      storage.getFracJobs(),
     ]);
 
     const conflicts: Array<{
@@ -568,75 +711,110 @@ export async function registerRoutes(
       }
     });
 
-    const fracJobs = await storage.getFracJobs();
     const fracMap = new Map(fracJobs.map(f => [f.id, f]));
     const haulerMap = new Map(allHaulers.map(h => [h.id, h]));
 
-    for (const dateStr of allDates) {
-      const haulerAssignments = new Map<number, { total: number; fracs: number[] }>();
-      const fracAssignments = new Map<number, number>();
+    const haulerExceptionsMap = new Map<number, Awaited<ReturnType<typeof storage.getCapacityExceptions>>>();
+    const uniqueHaulerIds = new Set(allocations.map(a => a.haulerId));
+    await Promise.all(
+      Array.from(uniqueHaulerIds).map(async (hId) => {
+        const exceptions = await storage.getCapacityExceptions(hId);
+        haulerExceptionsMap.set(hId, exceptions);
+      })
+    );
+
+    const allDatesArray = Array.from(allDates);
+    for (const dateStr of allDatesArray) {
+      const haulerAssignments = new Map<number, { total: number; fracs: number[]; fracTrucks: Map<number, number> }>();
+      const fracAssignments = new Map<number, { total: number; haulerTrucks: Map<number, number> }>();
 
       for (const alloc of allocations) {
         if (alloc.startDate <= dateStr && alloc.endDate >= dateStr) {
-          const ha = haulerAssignments.get(alloc.haulerId) || { total: 0, fracs: [] };
+          const ha = haulerAssignments.get(alloc.haulerId) || { total: 0, fracs: [] as number[], fracTrucks: new Map<number, number>() };
           ha.total += alloc.trucksPerShift;
           if (!ha.fracs.includes(alloc.fracJobId)) ha.fracs.push(alloc.fracJobId);
+          ha.fracTrucks.set(alloc.fracJobId, (ha.fracTrucks.get(alloc.fracJobId) || 0) + alloc.trucksPerShift);
           haulerAssignments.set(alloc.haulerId, ha);
 
-          const fa = (fracAssignments.get(alloc.fracJobId) || 0) + alloc.trucksPerShift;
+          const fa = fracAssignments.get(alloc.fracJobId) || { total: 0, haulerTrucks: new Map<number, number>() };
+          fa.total += alloc.trucksPerShift;
+          fa.haulerTrucks.set(alloc.haulerId, (fa.haulerTrucks.get(alloc.haulerId) || 0) + alloc.trucksPerShift);
           fracAssignments.set(alloc.fracJobId, fa);
         }
       }
 
-      for (const [haulerId, assignment] of haulerAssignments) {
+      Array.from(haulerAssignments.entries()).forEach(([haulerId, assignment]) => {
         const hauler = haulerMap.get(haulerId);
-        if (!hauler) continue;
-        const maxCap = hauler.defaultMaxTrucksPerShift;
+        if (!hauler) return;
+        const exceptions = haulerExceptionsMap.get(haulerId) || [];
+        const exception = exceptions.find(e => e.date === dateStr);
+        const maxCap = exception ? (exception.maxTrucksPerShift ?? hauler.defaultMaxTrucksPerShift) : hauler.defaultMaxTrucksPerShift;
 
         if (assignment.total > maxCap) {
+          const over = assignment.total - maxCap;
+          const breakdown = assignment.fracs.map((fId: number) => {
+            const frac = fracMap.get(fId);
+            const trucks = assignment.fracTrucks.get(fId) || 0;
+            return `${frac?.padName || `Frac #${fId}`}: ${trucks}`;
+          }).join(", ");
+          const capSource = exception ? `exception capacity ${maxCap}` : `max capacity ${maxCap}`;
           conflicts.push({
             type: "hauler_over_capacity",
             date: dateStr,
             entityId: haulerId,
             entityName: hauler.name,
-            detail: `Assigned ${assignment.total} trucks, max capacity ${maxCap}`,
+            detail: `Assigned ${assignment.total} trucks but ${capSource} (${over} over) [${breakdown}]`,
           });
         }
 
         if (!hauler.splitAllowed && assignment.fracs.length > 1) {
+          const fracNames = assignment.fracs.map((fId: number) => {
+            const frac = fracMap.get(fId);
+            return frac?.padName || `Frac #${fId}`;
+          }).join(", ");
           conflicts.push({
             type: "hauler_split_warning",
             date: dateStr,
             entityId: haulerId,
             entityName: hauler.name,
-            detail: `Assigned to ${assignment.fracs.length} fracs but split not allowed`,
+            detail: `Split across ${assignment.fracs.length} fracs (${fracNames}) but split not allowed`,
           });
         }
-      }
+      });
 
       for (const schedule of schedules) {
         if (schedule.plannedStartDate <= dateStr && schedule.plannedEndDate >= dateStr) {
           const frac = fracMap.get(schedule.fracJobId);
           if (!frac) continue;
-          const assigned = fracAssignments.get(schedule.fracJobId) || 0;
+          const fracData = fracAssignments.get(schedule.fracJobId);
+          const assigned = fracData?.total || 0;
           const required = getEffectiveTrucksForDate(schedule, dateStr);
-          const name = frac.padName || frac.wellName || `Frac #${schedule.fracJobId}`;
+          const name = frac.padName || `Frac #${schedule.fracJobId}`;
+
+          const haulerBreakdown = fracData
+            ? Array.from(fracData.haulerTrucks.entries()).map(([hId, trucks]: [number, number]) => {
+                const h = haulerMap.get(hId);
+                return `${h?.name || `Hauler #${hId}`}: ${trucks}`;
+              }).join(", ")
+            : "none assigned";
 
           if (assigned < required) {
+            const short = required - assigned;
             conflicts.push({
               type: "frac_under_supplied",
               date: dateStr,
               entityId: schedule.fracJobId,
               entityName: name,
-              detail: `Assigned ${assigned} trucks, needs ${required} (short ${required - assigned})`,
+              detail: `Needs ${required} trucks but only ${assigned} assigned (${short} short) [${haulerBreakdown}]`,
             });
           } else if (assigned > required && required > 0) {
+            const over = assigned - required;
             conflicts.push({
               type: "frac_over_supplied",
               date: dateStr,
               entityId: schedule.fracJobId,
               entityName: name,
-              detail: `Assigned ${assigned} trucks, only needs ${required} (over by ${assigned - required})`,
+              detail: `Needs ${required} trucks but ${assigned} assigned (${over} over) [${haulerBreakdown}]`,
             });
           }
         }
