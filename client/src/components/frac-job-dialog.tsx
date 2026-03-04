@@ -255,7 +255,7 @@ export function FracJobDialog({ open, onOpenChange, editJob, onCreated }: FracJo
                 )} />
                 <FormField control={form.control} name="loadUnloadTimeHours" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Load+Unload Time (hrs)</FormLabel>
+                    <FormLabel>Load Time (hrs)</FormLabel>
                     <FormControl><Input type="number" step="0.1" {...field} value={field.value ?? ""} data-testid="input-load-unload-time" /></FormControl>
                   </FormItem>
                 )} />
