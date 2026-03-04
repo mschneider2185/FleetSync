@@ -66,6 +66,7 @@ export interface IStorage {
   deletePreset(id: number): Promise<void>;
 
   getEventsByFracAndScenario(fracJobId: number, scenarioId: number): Promise<FracDailyEvent[]>;
+  getEventsByScenario(scenarioId: number): Promise<FracDailyEvent[]>;
   getEvent(id: number): Promise<FracDailyEvent | undefined>;
   createEvent(event: InsertFracDailyEvent): Promise<FracDailyEvent>;
   updateEvent(id: number, event: Partial<InsertFracDailyEvent>): Promise<FracDailyEvent | undefined>;
@@ -255,6 +256,9 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(fracDailyEvents).where(
       and(eq(fracDailyEvents.fracJobId, fracJobId), eq(fracDailyEvents.scenarioId, scenarioId))
     );
+  }
+  async getEventsByScenario(scenarioId: number): Promise<FracDailyEvent[]> {
+    return db.select().from(fracDailyEvents).where(eq(fracDailyEvents.scenarioId, scenarioId));
   }
   async getEvent(id: number): Promise<FracDailyEvent | undefined> {
     const [event] = await db.select().from(fracDailyEvents).where(eq(fracDailyEvents.id, id));

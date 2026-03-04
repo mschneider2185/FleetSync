@@ -14,11 +14,17 @@ interface Conflict {
   detail: string;
 }
 
+interface JournalEvent {
+  fracJobId: number;
+  date: string;
+}
+
 interface GanttChartProps {
   lanes: Lane[];
   fracJobs: FracJob[];
   schedules: ScenarioFracSchedule[];
   conflicts: Conflict[];
+  journalEvents?: JournalEvent[];
   onScheduleUpdate?: (scheduleId: number, newStartDate: string, newEndDate: string) => void;
   onFracClick?: (fracJobId: number) => void;
   onDateSelect?: (dateStr: string) => void;
@@ -52,6 +58,7 @@ export function GanttChart({
   fracJobs,
   schedules,
   conflicts,
+  journalEvents = [],
   onScheduleUpdate,
   onFracClick,
   onDateSelect,
@@ -62,6 +69,15 @@ export function GanttChart({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("month");
   const dayWidth = ZOOM_CONFIG[zoomLevel].dayWidth;
+
+  const journalByFrac = useMemo(() => {
+    const map = new Map<number, Set<string>>();
+    for (const evt of journalEvents) {
+      if (!map.has(evt.fracJobId)) map.set(evt.fracJobId, new Set());
+      map.get(evt.fracJobId)!.add(evt.date);
+    }
+    return map;
+  }, [journalEvents]);
 
   const dateRange = useMemo(() => {
     if (schedules.length === 0) {
@@ -506,6 +522,29 @@ export function GanttChart({
                                 <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
                               )}
                             </div>
+                            {dayWidth >= 8 && (() => {
+                              const fracEvents = journalByFrac.get(schedule.fracJobId);
+                              if (!fracEvents || fracEvents.size === 0) return null;
+                              const dots: JSX.Element[] = [];
+                              for (let di = 0; di < duration; di++) {
+                                const dayDate = format(addDays(parseISO(schedule.plannedStartDate), di), "yyyy-MM-dd");
+                                if (fracEvents.has(dayDate)) {
+                                  dots.push(
+                                    <div
+                                      key={di}
+                                      className="absolute bottom-0.5 rounded-full bg-amber-500"
+                                      style={{
+                                        left: di * dayWidth + dayWidth / 2 - (dayWidth >= 16 ? 3 : 2),
+                                        width: dayWidth >= 16 ? 6 : 4,
+                                        height: dayWidth >= 16 ? 6 : 4,
+                                      }}
+                                      data-testid={`dot-journal-${schedule.fracJobId}-${dayDate}`}
+                                    />
+                                  );
+                                }
+                              }
+                              return dots;
+                            })()}
                             {canResize && (
                               <div
                                 className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 hover:bg-foreground/10 rounded-r-md"
@@ -528,6 +567,11 @@ export function GanttChart({
                             {barConflicts.length > 0 && (
                               <p className="text-xs text-destructive font-medium">
                                 {barConflicts.length} day(s) with conflicts
+                              </p>
+                            )}
+                            {(journalByFrac.get(schedule.fracJobId)?.size ?? 0) > 0 && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                {journalByFrac.get(schedule.fracJobId)!.size} day(s) with journal notes
                               </p>
                             )}
                           </div>

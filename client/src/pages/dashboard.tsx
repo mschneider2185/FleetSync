@@ -25,7 +25,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
+import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario, FracDailyEvent } from "@shared/schema";
 
 interface Conflict {
   type: string;
@@ -364,6 +364,11 @@ export default function Dashboard() {
     enabled: !!activeScenarioId,
   });
 
+  const { data: journalEvents = [] } = useQuery<FracDailyEvent[]>({
+    queryKey: ["/api/scenarios", activeScenarioId, "events"],
+    enabled: !!activeScenarioId,
+  });
+
   const updateScheduleMutation = useMutation({
     mutationFn: async ({ id, startDate, endDate }: { id: number; startDate: string; endDate: string }) => {
       return apiRequest("PATCH", `/api/schedules/${id}`, { plannedStartDate: startDate, plannedEndDate: endDate });
@@ -528,6 +533,7 @@ export default function Dashboard() {
                   fracJobs={fracJobs}
                   schedules={schedules}
                   conflicts={conflicts}
+                  journalEvents={journalEvents}
                   isLocked={isLocked}
                   selectedDate={selectedDate}
                   onDateSelect={setSelectedDate}

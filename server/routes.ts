@@ -568,6 +568,13 @@ export async function registerRoutes(
     await storage.deletePreset(Number(req.params.id));
   });
 
+  app.get("/api/scenarios/:scenarioId/events", isAuthenticated, async (req, res) => {
+    const scenarioId = Number(req.params.scenarioId);
+    if (isNaN(scenarioId)) return res.status(400).json({ message: "Invalid scenario ID" });
+    const data = await storage.getEventsByScenario(scenarioId);
+    res.json(data);
+  });
+
   app.get("/api/frac-jobs/:id/events", isAuthenticated, async (req, res) => {
     const fracJobId = Number(req.params.id);
     const scenarioId = Number(req.query.scenarioId);
@@ -681,6 +688,22 @@ export async function registerRoutes(
         }
       }
     }
+
+    const haulerTotalValues = sortedDates.map(ds => {
+      const total = allAllocations
+        .filter(a => a.startDate <= ds && a.endDate >= ds)
+        .reduce((sum, a) => sum + a.trucksPerShift, 0);
+      return total > 0 ? String(total) : "";
+    });
+    rows.push(["", escape("Hauler Totals"), "", ...haulerTotalValues].join(","));
+
+    const fracNeedValues = sortedDates.map(ds => {
+      const total = allSchedules
+        .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+        .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+      return total > 0 ? String(total) : "";
+    });
+    rows.push(["", escape("Frac Needs Total"), "", ...fracNeedValues].join(","));
 
     const scenario = await storage.getScenario(scenarioId);
     const filename = `FleetSync_${(scenario?.name || "export").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;

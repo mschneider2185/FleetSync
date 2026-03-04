@@ -23,7 +23,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - **FracDailyEvents**: Daily journal entries per frac+scenario with category (NPT, MECHANICAL, WEATHER, etc.), hours lost, notes
 
 ## Key Features (MVP)
-- Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, and visible horizontal scrollbar
+- Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, visible horizontal scrollbar, and amber dot indicators for days with journal entries (fetched via `GET /api/scenarios/:id/events`)
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
 - Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
@@ -35,7 +35,8 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, and daily journal
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
-- Frac Needs Total footer row in allocation grid: sums required trucks across active schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
+- Frac Needs Total footer row in allocation grid: sums required trucks across active/planned/complete schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
+- CSV export includes Hauler Totals and Frac Needs Total summary rows at the bottom of the grid data
 - Frac-level cloning: Clone button on frac cards and detail panel, pre-fills all frac data with "(Copy)" suffix, includes schedule fields for immediate scheduling
 - Date-segmented truck requirements: `truckRequirementOverrides` JSON on schedules allows forward-only changes (e.g., change trucks from date X onward); helper `getEffectiveTrucksForDate()` used in grid, footer, and conflict detection
 - Lane management panel (create, rename, recolor, delete lanes)
