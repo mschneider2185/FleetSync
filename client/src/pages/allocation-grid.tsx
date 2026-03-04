@@ -9,7 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Plus, Download } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ChevronLeft, ChevronRight, Plus, Download, AlertTriangle } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 import { getEffectiveTrucksForDate } from "@shared/schema";
 
@@ -63,6 +67,10 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
   const isSavingRef = useRef(false);
+  const [capacityWarning, setCapacityWarning] = useState<{
+    message: string;
+    action: () => void;
+  } | null>(null);
 
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -141,14 +149,37 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
 
   const today = format(new Date(), "yyyy-MM-dd");
 
+  const allocRequest = async (method: string, url: string, data: any, forceRetry: () => void) => {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "include",
+    });
+    if (res.status === 422) {
+      const body = await res.json();
+      if (body.requiresConfirmation) {
+        setCapacityWarning({ message: body.message, action: forceRetry });
+        return null;
+      }
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || res.statusText);
+    }
+    return res;
+  };
+
   const refreshAllocations = async () => {
     await queryClient.refetchQueries({ queryKey: ["/api/scenarios", activeScenarioId, "allocations"] });
     queryClient.invalidateQueries({ queryKey: ["/api/scenarios", activeScenarioId, "conflicts"] });
   };
 
   const updateAllocMutation = useMutation({
-    mutationFn: async ({ allocId, trucksPerShift }: { allocId: number; trucksPerShift: number }) => {
-      return apiRequest("PATCH", `/api/allocations/${allocId}`, { trucksPerShift });
+    mutationFn: async ({ allocId, trucksPerShift, force }: { allocId: number; trucksPerShift: number; force?: boolean }) => {
+      return allocRequest("PATCH", `/api/allocations/${allocId}`, { trucksPerShift, force }, () => {
+        updateAllocMutation.mutate({ allocId, trucksPerShift, force: true });
+      });
     },
     onSettled: refreshAllocations,
     onError: (error: Error) => {
@@ -157,8 +188,10 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   });
 
   const createAllocMutation = useMutation({
-    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number }) => {
-      return apiRequest("POST", "/api/allocations", payload);
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean }) => {
+      return allocRequest("POST", "/api/allocations", payload, () => {
+        createAllocMutation.mutate({ ...payload, force: true });
+      });
     },
     onSettled: refreshAllocations,
     onError: (error: Error) => {
@@ -191,18 +224,21 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
           startDate: alloc.startDate,
           endDate: prevDay,
           trucksPerShift: alloc.trucksPerShift,
+          force: true,
         });
       }
 
       if (newValue > 0) {
-        await apiRequest("POST", "/api/allocations", {
+        const editedPayload = {
           scenarioId: alloc.scenarioId,
           fracJobId: alloc.fracJobId,
           haulerId: alloc.haulerId,
           startDate: dateStr,
           endDate: dateStr,
           trucksPerShift: newValue,
-        });
+          force: true,
+        };
+        await apiRequest("POST", "/api/allocations", editedPayload);
       }
 
       if (alloc.endDate > dateStr) {
@@ -213,6 +249,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
           startDate: nextDay,
           endDate: alloc.endDate,
           trucksPerShift: alloc.trucksPerShift,
+          force: true,
         });
       }
     },
@@ -633,6 +670,33 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
         }}
         defaultFracJobId={allocDialogFrac}
       />
+
+      <AlertDialog open={!!capacityWarning} onOpenChange={(open) => { if (!open) setCapacityWarning(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Hauler Over Capacity
+            </AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-line">
+              {capacityWarning?.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-capacity-grid">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-accept-capacity-grid"
+              className="bg-amber-600"
+              onClick={() => {
+                capacityWarning?.action();
+                setCapacityWarning(null);
+              }}
+            >
+              Accept Over-Capacity
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

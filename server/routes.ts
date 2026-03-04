@@ -464,7 +464,9 @@ export async function registerRoutes(
 
   app.post("/api/allocations", isAuthenticated, async (req: any, res) => {
     try {
-      const validated = validateBody(insertAllocationBlockSchema, req.body);
+      const force = req.body.force === true;
+      const { force: _f, ...body } = req.body;
+      const validated = validateBody(insertAllocationBlockSchema, body);
       if (!(await checkScenarioEditable(req, res, validated.scenarioId))) return;
       const overlapping = await storage.findOverlappingAllocations(
         validated.scenarioId, validated.fracJobId, validated.haulerId,
@@ -473,12 +475,14 @@ export async function registerRoutes(
       if (overlapping.length > 0) {
         return res.status(409).json({ message: "An allocation already exists for this hauler and frac job on the specified dates" });
       }
-      const capacityError = await checkHaulerCapacity(
-        validated.scenarioId, validated.haulerId, validated.trucksPerShift,
-        validated.startDate, validated.endDate
-      );
-      if (capacityError) {
-        return res.status(409).json({ message: capacityError });
+      if (!force) {
+        const capacityWarning = await checkHaulerCapacity(
+          validated.scenarioId, validated.haulerId, validated.trucksPerShift,
+          validated.startDate, validated.endDate
+        );
+        if (capacityWarning) {
+          return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });
+        }
       }
       const data = await storage.createAllocation(validated);
       res.json(data);
@@ -490,7 +494,9 @@ export async function registerRoutes(
   app.patch("/api/allocations/:id", isAuthenticated, async (req: any, res) => {
     try {
       const allocId = Number(req.params.id);
-      const validated = insertAllocationBlockSchema.partial().parse(req.body);
+      const force = req.body.force === true;
+      const { force: _f, ...body } = req.body;
+      const validated = insertAllocationBlockSchema.partial().parse(body);
       const existing = await storage.getAllocation(allocId);
       if (!existing) return res.status(404).json({ message: "Not found" });
       if (!(await checkScenarioEditable(req, res, existing.scenarioId))) return;
@@ -507,16 +513,18 @@ export async function registerRoutes(
           return res.status(409).json({ message: "This change would overlap with an existing allocation" });
         }
       }
-      const capacityError = await checkHaulerCapacity(
-        validated.scenarioId ?? existing.scenarioId,
-        validated.haulerId ?? existing.haulerId,
-        validated.trucksPerShift ?? existing.trucksPerShift,
-        validated.startDate ?? existing.startDate,
-        validated.endDate ?? existing.endDate,
-        allocId
-      );
-      if (capacityError) {
-        return res.status(409).json({ message: capacityError });
+      if (!force) {
+        const capacityWarning = await checkHaulerCapacity(
+          validated.scenarioId ?? existing.scenarioId,
+          validated.haulerId ?? existing.haulerId,
+          validated.trucksPerShift ?? existing.trucksPerShift,
+          validated.startDate ?? existing.startDate,
+          validated.endDate ?? existing.endDate,
+          allocId
+        );
+        if (capacityWarning) {
+          return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });
+        }
       }
       const data = await storage.updateAllocation(allocId, validated);
       if (!data) return res.status(404).json({ message: "Not found" });
