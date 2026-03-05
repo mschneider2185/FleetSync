@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Lock, FlaskConical } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -50,6 +51,7 @@ export function ScenarioSelector() {
   const { toast } = useToast();
   const [sandboxName, setSandboxName] = useState("");
   const [sandboxDialogOpen, setSandboxDialogOpen] = useState(false);
+  const [blankCanvas, setBlankCanvas] = useState(false);
 
   const { data: scenarios = [], isLoading } = useQuery<Scenario[]>({
     queryKey: ["/api/scenarios"],
@@ -68,6 +70,7 @@ export function ScenarioSelector() {
       if (!activeScenarioId) return;
       const res = await apiRequest("POST", `/api/scenarios/${activeScenarioId}/create-sandbox`, {
         name: sandboxName || undefined,
+        blank: blankCanvas,
       });
       return res.json();
     },
@@ -76,7 +79,13 @@ export function ScenarioSelector() {
       if (data?.id) setActiveScenarioId(data.id);
       setSandboxDialogOpen(false);
       setSandboxName("");
-      toast({ title: "Sandbox created", description: "You can now make changes without affecting the original plan." });
+      setBlankCanvas(false);
+      toast({
+        title: "Sandbox created",
+        description: blankCanvas
+          ? "Starting from scratch — add frac jobs and schedules to build your plan."
+          : "You can now make changes without affecting the original plan.",
+      });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -140,6 +149,22 @@ export function ScenarioSelector() {
                 onChange={(e) => setSandboxName(e.target.value)}
                 data-testid="input-sandbox-name"
               />
+            </div>
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="blank-canvas"
+                checked={blankCanvas}
+                onCheckedChange={(checked) => setBlankCanvas(checked === true)}
+                data-testid="checkbox-blank-canvas"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="blank-canvas" className="cursor-pointer font-medium leading-none">
+                  Start from scratch
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Create an empty sandbox with no schedules or allocations. You'll build your plan from the ground up.
+                </p>
+              </div>
             </div>
             <Button
               onClick={() => sandboxMutation.mutate()}

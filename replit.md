@@ -27,7 +27,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
 - Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
-- Scenario management (Actual/Sandbox) with sandbox creation and role-based access (planner vs viewer)
+- Scenario management (Actual/Sandbox) with sandbox creation (copy-from-parent or blank canvas "Start from scratch") and role-based access (planner vs viewer)
 - Lane cascading: extending a frac's end date auto-pushes downstream fracs in the same lane
 - Frac job builder with sand plan details (including configurable load+unload time)
 - Hauler management with capacity tracking; over-capacity allocations show a confirmation warning (422 + `requiresConfirmation`) instead of hard-blocking, allowing users to accept or cancel via AlertDialog; `force: true` bypasses the check
@@ -114,6 +114,11 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - Deleting a frac in sandbox mode only removes its schedule/allocations from that sandbox (not the global frac job)
 - Editing frac global properties (pad name, customer) is blocked in sandbox mode
 - Global frac deletion requires planner role and is only allowed from non-sandbox scenarios
+
+## Deployment
+- Configured for autoscale deployment with `npm run build` + `npm run start` (NODE_ENV=production)
+- In production, `cleanupScenarios()` in seed.ts is skipped to prevent destructive dev-only cleanup
+- `seedPresets()` and `cleanupOrphanedData()` run in all environments (safe/idempotent)
 
 ## Capacity Hard-Stop
 - Allocation POST/PATCH validates hauler capacity: if saving would exceed `defaultMaxTrucksPerShift` (or date-specific exceptions), returns 409

@@ -178,6 +178,7 @@ export async function registerRoutes(
     const username = req.user?.claims?.preferred_username || req.user?.claims?.name || "User";
     const dateStr = new Date().toISOString().split("T")[0];
     const sandboxName = req.body.name || `Sandbox - ${username} - ${dateStr}`;
+    const blank = req.body.blank === true;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -189,33 +190,35 @@ export async function registerRoutes(
           createdByUserId: req.user?.claims?.sub || null,
         }).returning();
 
-        const schedules = await storage.getSchedulesByScenario(sourceId);
-        if (schedules.length > 0) {
-          await tx.insert(scenarioFracSchedules).values(
-            schedules.map(s => ({
-              scenarioId: newScenario.id,
-              fracJobId: s.fracJobId,
-              plannedStartDate: s.plannedStartDate,
-              plannedEndDate: s.plannedEndDate,
-              transitionDaysAfter: s.transitionDaysAfter,
-              requiredTrucksPerShift: s.requiredTrucksPerShift,
-              status: s.status,
-            }))
-          );
-        }
+        if (!blank) {
+          const schedules = await storage.getSchedulesByScenario(sourceId);
+          if (schedules.length > 0) {
+            await tx.insert(scenarioFracSchedules).values(
+              schedules.map(s => ({
+                scenarioId: newScenario.id,
+                fracJobId: s.fracJobId,
+                plannedStartDate: s.plannedStartDate,
+                plannedEndDate: s.plannedEndDate,
+                transitionDaysAfter: s.transitionDaysAfter,
+                requiredTrucksPerShift: s.requiredTrucksPerShift,
+                status: s.status,
+              }))
+            );
+          }
 
-        const allocations = await storage.getAllocationsByScenario(sourceId);
-        if (allocations.length > 0) {
-          await tx.insert(allocationBlocks).values(
-            allocations.map(a => ({
-              scenarioId: newScenario.id,
-              fracJobId: a.fracJobId,
-              haulerId: a.haulerId,
-              startDate: a.startDate,
-              endDate: a.endDate,
-              trucksPerShift: a.trucksPerShift,
-            }))
-          );
+          const allocations = await storage.getAllocationsByScenario(sourceId);
+          if (allocations.length > 0) {
+            await tx.insert(allocationBlocks).values(
+              allocations.map(a => ({
+                scenarioId: newScenario.id,
+                fracJobId: a.fracJobId,
+                haulerId: a.haulerId,
+                startDate: a.startDate,
+                endDate: a.endDate,
+                trucksPerShift: a.trucksPerShift,
+              }))
+            );
+          }
         }
 
         return newScenario;

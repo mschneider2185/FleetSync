@@ -92,7 +92,9 @@ async function cleanupScenarios() {
 
 export async function seedDatabase() {
   await cleanupOrphanedData();
-  await cleanupScenarios();
+  if (process.env.NODE_ENV !== "production") {
+    await cleanupScenarios();
+  }
   await seedPresets();
 
   const existingLanes = await db.select().from(lanes);
