@@ -26,7 +26,8 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, visible horizontal scrollbar, and amber dot indicators for days with journal entries (fetched via `GET /api/scenarios/:id/events`)
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
-- Inline cell editing in allocation grid: click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
+- Inline cell editing in allocation grid: double-click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
+- Bulk editing in allocation grid: (1) click to select a cell, Shift+click to extend range, then use bulk toolbar to apply a value or clear the range; (2) drag-to-fill handle on right edge of valued cells to copy value across adjacent dates; (3) pencil edit button on hover of hauler row labels opens pre-filled AllocationDialog for editing entire blocks
 - Scenario management (Actual/Sandbox) with sandbox creation (copy-from-parent or blank canvas "Start from scratch") and role-based access (planner vs viewer)
 - Lane cascading: extending a frac's end date auto-pushes downstream fracs in the same lane
 - Frac job builder with sand plan details (including configurable load+unload time)
@@ -101,7 +102,7 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/haulers/:id/capacity-exceptions` - GET
 - `/api/capacity-exceptions` - POST; `/api/capacity-exceptions/:id` - DELETE
 - `/api/scenarios/:scenarioId/allocations` - GET
-- `/api/allocations` - POST; `/api/allocations/:id` - PATCH, DELETE
+- `/api/allocations` - POST; `/api/allocations/bulk` - POST (range replace with split-preservation); `/api/allocations/:id` - PATCH, DELETE
 - `/api/scenarios/:scenarioId/conflicts` - GET (computed conflict detection with detailed explanations)
 - `/api/scenarios/:scenarioId/export` - GET (CSV export of allocation grid)
 - `/api/presets` - GET (?type= filter), POST, DELETE /:id (planner only)

@@ -537,6 +537,69 @@ export async function registerRoutes(
       throw e;
     }
   });
+  app.post("/api/allocations/bulk", isAuthenticated, async (req: any, res) => {
+    try {
+      const force = req.body.force === true;
+      const { force: _f, ...body } = req.body;
+      const validated = validateBody(insertAllocationBlockSchema, body);
+      if (!(await checkScenarioEditable(req, res, validated.scenarioId))) return;
+
+      const overlapping = await storage.findOverlappingAllocations(
+        validated.scenarioId, validated.fracJobId, validated.haulerId,
+        validated.startDate, validated.endDate
+      );
+
+      for (const o of overlapping) {
+        await storage.deleteAllocation(o.id);
+
+        if (o.startDate < validated.startDate) {
+          const prevDay = new Date(validated.startDate + "T00:00:00");
+          prevDay.setDate(prevDay.getDate() - 1);
+          await storage.createAllocation({
+            scenarioId: o.scenarioId,
+            fracJobId: o.fracJobId,
+            haulerId: o.haulerId,
+            startDate: o.startDate,
+            endDate: prevDay.toISOString().split("T")[0],
+            trucksPerShift: o.trucksPerShift,
+          });
+        }
+
+        if (o.endDate > validated.endDate) {
+          const nextDay = new Date(validated.endDate + "T00:00:00");
+          nextDay.setDate(nextDay.getDate() + 1);
+          await storage.createAllocation({
+            scenarioId: o.scenarioId,
+            fracJobId: o.fracJobId,
+            haulerId: o.haulerId,
+            startDate: nextDay.toISOString().split("T")[0],
+            endDate: o.endDate,
+            trucksPerShift: o.trucksPerShift,
+          });
+        }
+      }
+
+      if (validated.trucksPerShift > 0) {
+        if (!force) {
+          const capacityWarning = await checkHaulerCapacity(
+            validated.scenarioId, validated.haulerId, validated.trucksPerShift,
+            validated.startDate, validated.endDate
+          );
+          if (capacityWarning) {
+            return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });
+          }
+        }
+        const data = await storage.createAllocation(validated);
+        return res.json(data);
+      }
+
+      res.json({ ok: true, deleted: overlapping.length });
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: e.errors.map(err => `${err.path.length ? err.path.join('.') + ': ' : ''}${err.message}`).join('; ') });
+      throw e;
+    }
+  });
+
   app.delete("/api/allocations/:id", isAuthenticated, async (req: any, res) => {
     const alloc = await storage.getAllocation(Number(req.params.id));
     if (!alloc) return res.status(404).json({ message: "Not found" });

@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -39,9 +39,10 @@ interface AllocationDialogProps {
   onOpenChange: (open: boolean) => void;
   editAllocation?: AllocationBlock | null;
   defaultFracJobId?: number;
+  defaultHaulerId?: number;
 }
 
-export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFracJobId }: AllocationDialogProps) {
+export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFracJobId, defaultHaulerId }: AllocationDialogProps) {
   const { toast } = useToast();
   const { activeScenarioId } = useScenario();
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -55,12 +56,24 @@ export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFr
     resolver: zodResolver(formSchema),
     defaultValues: {
       fracJobId: editAllocation?.fracJobId || defaultFracJobId || 0,
-      haulerId: editAllocation?.haulerId || 0,
+      haulerId: editAllocation?.haulerId || defaultHaulerId || 0,
       startDate: editAllocation?.startDate || "",
       endDate: editAllocation?.endDate || "",
       trucksPerShift: editAllocation?.trucksPerShift || 1,
     },
   });
+
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        fracJobId: editAllocation?.fracJobId || defaultFracJobId || 0,
+        haulerId: editAllocation?.haulerId || defaultHaulerId || 0,
+        startDate: editAllocation?.startDate || "",
+        endDate: editAllocation?.endDate || "",
+        trucksPerShift: editAllocation?.trucksPerShift || 1,
+      });
+    }
+  }, [open, editAllocation, defaultFracJobId, defaultHaulerId]);
 
   const submitAllocation = async (values: FormValues, force?: boolean) => {
     const payload = { ...values, scenarioId: activeScenarioId, force };

@@ -9,11 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Plus, Download, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Download, AlertTriangle, Pencil, X, Check, Trash2 } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 import { getEffectiveTrucksForDate } from "@shared/schema";
 
@@ -27,6 +28,21 @@ interface EditingCell {
   dateStr: string;
   allocId: number | null;
   originalValue: number;
+}
+
+interface RangeSelection {
+  fracJobId: number;
+  haulerId: number;
+  startDateStr: string;
+  endDateStr: string;
+}
+
+interface DragFill {
+  fracJobId: number;
+  haulerId: number;
+  sourceDateStr: string;
+  sourceValue: number;
+  currentDateStr: string;
 }
 
 interface AllocationGridContentProps {
@@ -63,6 +79,8 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
 
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
+  const [allocDialogHauler, setAllocDialogHauler] = useState<number | undefined>();
+  const [allocDialogEdit, setAllocDialogEdit] = useState<AllocationBlock | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +89,13 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
     message: string;
     action: () => void;
   } | null>(null);
+
+  const [rangeSelection, setRangeSelection] = useState<RangeSelection | null>(null);
+  const [bulkValue, setBulkValue] = useState("");
+  const bulkToolbarRef = useRef<HTMLDivElement>(null);
+
+  const [dragFill, setDragFill] = useState<DragFill | null>(null);
+  const isDraggingRef = useRef(false);
 
   const { data: lanes = [] } = useQuery<Lane[]>({ queryKey: ["/api/lanes"] });
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -259,8 +284,26 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
     },
   });
 
+  const bulkAllocMutation = useMutation({
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean }) => {
+      return allocRequest("POST", "/api/allocations/bulk", payload, () => {
+        bulkAllocMutation.mutate({ ...payload, force: true });
+      });
+    },
+    onSettled: refreshAllocations,
+    onSuccess: () => {
+      setRangeSelection(null);
+      setBulkValue("");
+      setDragFill(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to apply bulk edit", variant: "destructive" });
+    },
+  });
+
   const startEditing = (fracJobId: number, haulerId: number, dateStr: string) => {
     if (isSavingRef.current) return;
+    if (isDraggingRef.current) return;
     const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
     const currentValue = alloc ? alloc.trucksPerShift : 0;
     setEditingCell({
@@ -333,6 +376,141 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
     }
   }, [editingCell]);
 
+  const handleCellClick = (fracJobId: number, haulerId: number, dateStr: string, e: React.MouseEvent) => {
+    if (isDraggingRef.current) return;
+
+    if (e.shiftKey && rangeSelection && rangeSelection.fracJobId === fracJobId && rangeSelection.haulerId === haulerId) {
+      const start = rangeSelection.startDateStr;
+      const newEnd = dateStr;
+      const orderedStart = start <= newEnd ? start : newEnd;
+      const orderedEnd = start <= newEnd ? newEnd : start;
+      setRangeSelection({ fracJobId, haulerId, startDateStr: orderedStart, endDateStr: orderedEnd });
+      return;
+    }
+
+    setRangeSelection({ fracJobId, haulerId, startDateStr: dateStr, endDateStr: dateStr });
+    setBulkValue("");
+  };
+
+  const handleCellDoubleClick = (fracJobId: number, haulerId: number, dateStr: string) => {
+    if (isDraggingRef.current) return;
+    setRangeSelection(null);
+    setBulkValue("");
+    startEditing(fracJobId, haulerId, dateStr);
+  };
+
+  const isInRange = (fracJobId: number, haulerId: number, dateStr: string) => {
+    if (!rangeSelection) return false;
+    return rangeSelection.fracJobId === fracJobId &&
+      rangeSelection.haulerId === haulerId &&
+      dateStr >= rangeSelection.startDateStr &&
+      dateStr <= rangeSelection.endDateStr;
+  };
+
+  const isInDragFill = (fracJobId: number, haulerId: number, dateStr: string) => {
+    if (!dragFill) return false;
+    if (dragFill.fracJobId !== fracJobId || dragFill.haulerId !== haulerId) return false;
+    const start = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.sourceDateStr : dragFill.currentDateStr;
+    const end = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.currentDateStr : dragFill.sourceDateStr;
+    return dateStr >= start && dateStr <= end;
+  };
+
+  const applyBulkEdit = () => {
+    if (!rangeSelection || !activeScenarioId) return;
+    const value = parseInt(bulkValue) || 0;
+    if (value <= 0) return;
+    bulkAllocMutation.mutate({
+      fracJobId: rangeSelection.fracJobId,
+      haulerId: rangeSelection.haulerId,
+      startDate: rangeSelection.startDateStr,
+      endDate: rangeSelection.endDateStr,
+      trucksPerShift: value,
+      scenarioId: activeScenarioId,
+    });
+  };
+
+  const clearRange = () => {
+    if (!rangeSelection || !activeScenarioId) return;
+    bulkAllocMutation.mutate({
+      fracJobId: rangeSelection.fracJobId,
+      haulerId: rangeSelection.haulerId,
+      startDate: rangeSelection.startDateStr,
+      endDate: rangeSelection.endDateStr,
+      trucksPerShift: 0,
+      scenarioId: activeScenarioId,
+    });
+  };
+
+  const handleDragStart = (fracJobId: number, haulerId: number, dateStr: string, value: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    setDragFill({ fracJobId, haulerId, sourceDateStr: dateStr, sourceValue: value, currentDateStr: dateStr });
+    setRangeSelection(null);
+  };
+
+  const handleDragMove = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
+    if (!isDraggingRef.current || !dragFill) return;
+    if (dragFill.fracJobId !== fracJobId || dragFill.haulerId !== haulerId) return;
+    setDragFill(prev => prev ? { ...prev, currentDateStr: dateStr } : null);
+  }, [dragFill]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDraggingRef.current || !dragFill || !activeScenarioId) {
+      isDraggingRef.current = false;
+      setDragFill(null);
+      return;
+    }
+    isDraggingRef.current = false;
+
+    const start = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.sourceDateStr : dragFill.currentDateStr;
+    const end = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.currentDateStr : dragFill.sourceDateStr;
+
+    if (start === end && start === dragFill.sourceDateStr) {
+      setDragFill(null);
+      return;
+    }
+
+    bulkAllocMutation.mutate({
+      fracJobId: dragFill.fracJobId,
+      haulerId: dragFill.haulerId,
+      startDate: start,
+      endDate: end,
+      trucksPerShift: dragFill.sourceValue,
+      scenarioId: activeScenarioId,
+    });
+  }, [dragFill, activeScenarioId, bulkAllocMutation]);
+
+  useEffect(() => {
+    const onMouseUp = () => {
+      if (isDraggingRef.current) {
+        handleDragEnd();
+      }
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [handleDragEnd]);
+
+  const openEditDialog = (fracJobId: number, haulerId: number) => {
+    const fracAllocs = allocations.filter(a => a.fracJobId === fracJobId && a.haulerId === haulerId);
+    if (fracAllocs.length === 0) {
+      setAllocDialogFrac(fracJobId);
+      setAllocDialogHauler(haulerId);
+      setAllocDialogEdit(null);
+      setAllocDialogOpen(true);
+      return;
+    }
+    const longest = fracAllocs.reduce((best, a) => {
+      const aLen = new Date(a.endDate).getTime() - new Date(a.startDate).getTime();
+      const bLen = new Date(best.endDate).getTime() - new Date(best.startDate).getTime();
+      return aLen > bLen ? a : best;
+    });
+    setAllocDialogFrac(fracJobId);
+    setAllocDialogHauler(haulerId);
+    setAllocDialogEdit(longest);
+    setAllocDialogOpen(true);
+  };
+
   const allHaulerIdsForFrac = useMemo(() => {
     const map = new Map<number, number[]>();
     for (const schedule of activeSchedules) {
@@ -344,6 +522,8 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   }, [activeSchedules, allocations]);
 
   const tableWidth = LABEL_WIDTH + daysVisible * COL_WIDTH;
+
+  const rangeHasMultipleDates = rangeSelection && rangeSelection.startDateStr !== rangeSelection.endDateStr;
 
   return (
     <div ref={containerRef} className="flex flex-col h-full">
@@ -381,6 +561,65 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
           </Button>
         </div>
       </div>
+
+      {rangeHasMultipleDates && (
+        <div
+          ref={bulkToolbarRef}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-950/30 border-b text-sm shrink-0"
+          data-testid="toolbar-bulk-edit"
+        >
+          <span className="text-blue-700 dark:text-blue-300 font-medium">
+            {(() => {
+              const s = new Date(rangeSelection!.startDateStr + "T00:00:00");
+              const e = new Date(rangeSelection!.endDateStr + "T00:00:00");
+              const days = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+              const hauler = haulerMap.get(rangeSelection!.haulerId);
+              return `${days} days selected${hauler ? ` — ${hauler.name}` : ""}`;
+            })()}
+          </span>
+          <Input
+            type="number"
+            min={1}
+            placeholder="Trucks"
+            value={bulkValue}
+            onChange={e => setBulkValue(e.target.value.replace(/[^0-9]/g, ""))}
+            className="w-20 h-7 text-xs"
+            data-testid="input-bulk-trucks"
+            onKeyDown={e => { if (e.key === "Enter") applyBulkEdit(); }}
+          />
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 px-2 text-xs"
+            onClick={applyBulkEdit}
+            disabled={bulkAllocMutation.isPending || !bulkValue}
+            data-testid="button-bulk-apply"
+          >
+            <Check className="w-3 h-3 mr-1" />
+            Apply
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs text-red-600 hover:text-red-700"
+            onClick={clearRange}
+            disabled={bulkAllocMutation.isPending}
+            data-testid="button-bulk-clear"
+          >
+            <Trash2 className="w-3 h-3 mr-1" />
+            Clear
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0"
+            onClick={() => { setRangeSelection(null); setBulkValue(""); }}
+            data-testid="button-bulk-dismiss"
+          >
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex-1 p-6 space-y-4">
@@ -468,6 +707,8 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                           className="h-6 w-6 shrink-0"
                           onClick={() => {
                             setAllocDialogFrac(frac.id);
+                            setAllocDialogHauler(undefined);
+                            setAllocDialogEdit(null);
                             setAllocDialogOpen(true);
                           }}
                           data-testid={`button-add-alloc-${frac.id}`}
@@ -512,16 +753,27 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                     const hauler = haulerMap.get(haulerId);
                     if (!hauler) return null;
                     return (
-                      <tr key={`${schedule.id}-${haulerId}`}>
+                      <tr key={`${schedule.id}-${haulerId}`} className="group/hauler-row">
                         <td
                           className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1.5 pl-8"
                           style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-muted-foreground truncate">{hauler.name}</span>
-                            <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
-                              max {hauler.defaultMaxTrucksPerShift}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover/hauler-row:opacity-100 transition-opacity shrink-0"
+                                onClick={() => openEditDialog(schedule.fracJobId, haulerId)}
+                                data-testid={`button-edit-hauler-${schedule.fracJobId}-${haulerId}`}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
+                                max {hauler.defaultMaxTrucksPerShift}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         {dateStrings.map((ds, i) => {
@@ -539,6 +791,8 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                           const isEditing = editingCell?.fracJobId === schedule.fracJobId &&
                             editingCell?.haulerId === haulerId &&
                             editingCell?.dateStr === ds;
+                          const inRange = isInRange(schedule.fracJobId, haulerId, ds);
+                          const inDrag = isInDragFill(schedule.fracJobId, haulerId, ds);
 
                           if (isEditing) {
                             return (
@@ -582,12 +836,25 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
                           return (
                             <td
                               key={i}
-                              className="border-b border-r text-center py-1 text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              className={`border-b border-r text-center py-1 text-muted-foreground cursor-pointer transition-colors relative select-none ${
+                                inRange ? "bg-blue-100 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-400/50" :
+                                inDrag ? "bg-green-100 dark:bg-green-900/30 ring-1 ring-inset ring-green-400/50" :
+                                "hover:bg-accent/50"
+                              }`}
                               style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                              onClick={() => startEditing(schedule.fracJobId, haulerId, ds)}
+                              onClick={(e) => handleCellClick(schedule.fracJobId, haulerId, ds, e)}
+                              onDoubleClick={() => handleCellDoubleClick(schedule.fracJobId, haulerId, ds)}
+                              onMouseEnter={() => handleDragMove(schedule.fracJobId, haulerId, ds)}
                               data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}`}
                             >
                               {trucks > 0 ? trucks : ""}
+                              {trucks > 0 && !isDraggingRef.current && (
+                                <div
+                                  className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-4 bg-primary/60 hover:bg-primary cursor-crosshair rounded-sm opacity-0 group-hover/hauler-row:opacity-100 transition-opacity"
+                                  onMouseDown={(e) => handleDragStart(schedule.fracJobId, haulerId, ds, trucks, e)}
+                                  data-testid={`handle-drag-${schedule.fracJobId}-${haulerId}-${ds}`}
+                                />
+                              )}
                             </td>
                           );
                         })}
@@ -666,9 +933,15 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
         open={allocDialogOpen}
         onOpenChange={(open) => {
           setAllocDialogOpen(open);
-          if (!open) setAllocDialogFrac(undefined);
+          if (!open) {
+            setAllocDialogFrac(undefined);
+            setAllocDialogHauler(undefined);
+            setAllocDialogEdit(null);
+          }
         }}
         defaultFracJobId={allocDialogFrac}
+        defaultHaulerId={allocDialogHauler}
+        editAllocation={allocDialogEdit}
       />
 
       <AlertDialog open={!!capacityWarning} onOpenChange={(open) => { if (!open) setCapacityWarning(null); }}>
