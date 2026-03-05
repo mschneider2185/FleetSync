@@ -29,6 +29,7 @@ interface GanttChartProps {
   onFracClick?: (fracJobId: number) => void;
   onDateSelect?: (dateStr: string) => void;
   onViewDateChange?: (dateStr: string) => void;
+  onVisibleRangeChange?: (firstVisibleDate: string, numDays: number) => void;
   selectedDate?: string | null;
   isLocked?: boolean;
 }
@@ -63,6 +64,7 @@ export function GanttChart({
   onFracClick,
   onDateSelect,
   onViewDateChange,
+  onVisibleRangeChange,
   selectedDate,
   isLocked,
 }: GanttChartProps) {
@@ -191,6 +193,25 @@ export function GanttChart({
     const dayIndex = Math.floor(centerPx / dayWidth);
     return format(addDays(dateRange.start, Math.max(0, Math.min(dayIndex, dateRange.days - 1))), "yyyy-MM-dd");
   };
+
+  const reportVisibleRange = useCallback(() => {
+    if (!scrollRef.current || !onVisibleRangeChange) return;
+    const el = scrollRef.current;
+    const scrollLeft = Math.max(0, el.scrollLeft - LANE_HEADER_WIDTH);
+    const visibleWidth = el.clientWidth - LANE_HEADER_WIDTH;
+    const firstDayIndex = Math.max(0, Math.floor(scrollLeft / dayWidth));
+    const numDays = Math.max(7, Math.ceil(visibleWidth / dayWidth));
+    const firstDate = format(addDays(dateRange.start, Math.min(firstDayIndex, dateRange.days - 1)), "yyyy-MM-dd");
+    onVisibleRangeChange(firstDate, numDays);
+  }, [dayWidth, dateRange, onVisibleRangeChange]);
+
+  const handleScroll = useCallback(() => {
+    reportVisibleRange();
+  }, [reportVisibleRange]);
+
+  useEffect(() => {
+    reportVisibleRange();
+  }, [zoomLevel, reportVisibleRange]);
 
   const scrollBy = (days: number) => {
     if (!scrollRef.current) return;
@@ -324,6 +345,7 @@ export function GanttChart({
       <div
         className="flex-1 overflow-auto relative gantt-scroll"
         ref={scrollRef}
+        onScroll={handleScroll}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}

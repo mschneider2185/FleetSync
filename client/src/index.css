@@ -285,16 +285,16 @@
     border-radius: 6px;
   }
   .gantt-scroll::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--muted-foreground) / 0.5);
     border-radius: 6px;
     border: 2px solid hsl(var(--muted));
   }
   .gantt-scroll::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.4);
+    background: hsl(var(--muted-foreground) / 0.7);
   }
   .gantt-scroll {
     scrollbar-width: auto;
-    scrollbar-color: hsl(var(--border)) hsl(var(--muted));
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) hsl(var(--muted));
   }
 
   /* If there's a 1px border, adjust the inset so that it covers that parent's border */

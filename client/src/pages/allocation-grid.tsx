@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
-import { format, addDays, startOfDay } from "date-fns";
+import { format, addDays, startOfDay, startOfWeek, startOfMonth, startOfQuarter } from "date-fns";
 import { ScenarioSelector } from "@/components/scenario-selector";
 import { AllocationDialog } from "@/components/allocation-dialog";
 import { useScenario } from "@/hooks/use-scenario";
@@ -48,10 +48,11 @@ interface DragFill {
 interface AllocationGridContentProps {
   compact?: boolean;
   externalStartDate?: Date;
+  externalDaysVisible?: number;
   selectedDate?: string | null;
 }
 
-export function AllocationGridContent({ compact = false, externalStartDate, selectedDate: selectedDateProp }: AllocationGridContentProps) {
+export function AllocationGridContent({ compact = false, externalStartDate, externalDaysVisible, selectedDate: selectedDateProp }: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
   const [internalStartDate, setInternalStartDate] = useState(() => startOfDay(new Date()));
@@ -59,6 +60,10 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
   const setStartDate = externalStartDate ? () => {} : setInternalStartDate;
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [presetDays, setPresetDays] = useState<number | null>(null);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const isStandalone = !externalStartDate;
+  const gridScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -72,10 +77,41 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
     return () => ro.disconnect();
   }, []);
 
-  const daysVisible = useMemo(() => {
+  const autoDays = useMemo(() => {
     if (containerWidth <= 0) return DEFAULT_DAYS_VISIBLE;
     return Math.max(7, Math.floor((containerWidth - LABEL_WIDTH) / COL_WIDTH));
   }, [containerWidth]);
+
+  const daysVisible = externalDaysVisible || presetDays || autoDays;
+
+  const applyPreset = (key: string, days: number) => {
+    const now = new Date();
+    let snapDate: Date;
+    switch (key) {
+      case "1W":
+        snapDate = startOfWeek(now, { weekStartsOn: 1 });
+        break;
+      case "2W":
+        snapDate = startOfWeek(now, { weekStartsOn: 1 });
+        break;
+      case "1M":
+        snapDate = startOfMonth(now);
+        break;
+      case "Q":
+        snapDate = startOfQuarter(now);
+        break;
+      default:
+        snapDate = startOfDay(now);
+    }
+    setInternalStartDate(snapDate);
+    setPresetDays(days);
+    setActivePreset(key);
+  };
+
+  const clearPreset = () => {
+    setPresetDays(null);
+    setActivePreset(null);
+  };
 
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
@@ -536,7 +572,33 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
             </>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isStandalone && (
+            <div className="flex items-center gap-1" data-testid="preset-buttons">
+              {[
+                { key: "1W", label: "1W", days: 7 },
+                { key: "2W", label: "2W", days: 14 },
+                { key: "1M", label: "1M", days: 30 },
+                { key: "Q", label: "Q", days: 90 },
+              ].map(({ key, label, days }) => (
+                <Button
+                  key={key}
+                  variant={activePreset === key ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (activePreset === key) {
+                      clearPreset();
+                    } else {
+                      applyPreset(key, days);
+                    }
+                  }}
+                  data-testid={`button-preset-${key}`}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          )}
           {!compact && activeScenarioId && (
             <Button
               variant="outline"
@@ -550,13 +612,13 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
               Export CSV
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setStartDate(d => addDays(d, -7))} data-testid="button-grid-prev">
+          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(d => addDays(d, -7)); }} data-testid="button-grid-prev">
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setStartDate(startOfDay(new Date()))} data-testid="button-grid-today">
+          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(startOfDay(new Date())); }} data-testid="button-grid-today">
             Today
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setStartDate(d => addDays(d, 7))} data-testid="button-grid-next">
+          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(d => addDays(d, 7)); }} data-testid="button-grid-next">
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -634,7 +696,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-auto relative">
+        <div ref={gridScrollRef} className="flex-1 overflow-auto relative">
           <table
             className="border-collapse text-xs"
             style={{ tableLayout: "fixed", minWidth: tableWidth, width: tableWidth }}
@@ -926,6 +988,48 @@ export function AllocationGridContent({ compact = false, externalStartDate, sele
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+
+      {isStandalone && activeSchedules.length > 0 && (
+        <div className="shrink-0 border-t bg-background px-4 py-2 flex items-center gap-3" data-testid="grid-date-scrollbar">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { clearPreset(); setInternalStartDate(d => addDays(d, -1)); }}
+            data-testid="button-scroll-left"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{format(startDate, "MMM d, yyyy")}</span>
+          <input
+            type="range"
+            min={-180}
+            max={180}
+            value={(() => {
+              const todayDate = startOfDay(new Date());
+              const diff = Math.round((startDate.getTime() - todayDate.getTime()) / 86400000);
+              return Math.max(-180, Math.min(180, diff));
+            })()}
+            className="flex-1 h-3 accent-primary cursor-pointer"
+            onChange={(e) => {
+              const offset = parseInt(e.target.value);
+              clearPreset();
+              setInternalStartDate(addDays(startOfDay(new Date()), offset));
+            }}
+            data-testid="input-date-slider"
+          />
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {format(addDays(startDate, daysVisible - 1), "MMM d, yyyy")}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { clearPreset(); setInternalStartDate(d => addDays(d, 1)); }}
+            data-testid="button-scroll-right"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
         </div>
       )}
 

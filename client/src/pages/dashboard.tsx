@@ -292,6 +292,7 @@ export default function Dashboard() {
   const [gridCollapsed, setGridCollapsed] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [viewDate, setViewDate] = useState<string | null>(null);
+  const [ganttVisibleRange, setGanttVisibleRange] = useState<{ firstDate: string; numDays: number } | null>(null);
   const [splitPercent, setSplitPercent] = useState(50);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
@@ -438,10 +439,13 @@ export default function Dashboard() {
   const selectedSchedule = schedules.find(s => s.fracJobId === selectedFracId) || null;
 
   const gridStartDate = useMemo(() => {
+    if (ganttVisibleRange) return startOfDay(parseISO(ganttVisibleRange.firstDate));
     const dateToUse = selectedDate || viewDate;
     if (dateToUse) return startOfDay(parseISO(dateToUse));
     return undefined;
-  }, [selectedDate, viewDate]);
+  }, [ganttVisibleRange, selectedDate, viewDate]);
+
+  const gridDaysVisible = ganttVisibleRange?.numDays;
 
   const isLoading = lanesLoading || fracLoading || schedulesLoading;
 
@@ -538,6 +542,7 @@ export default function Dashboard() {
                   selectedDate={selectedDate}
                   onDateSelect={setSelectedDate}
                   onViewDateChange={setViewDate}
+                  onVisibleRangeChange={(firstDate, numDays) => setGanttVisibleRange({ firstDate, numDays })}
                   onScheduleUpdate={(id, start, end) => updateScheduleMutation.mutate({ id, startDate: start, endDate: end })}
                   onFracClick={(fracId) => {
                     setSelectedFracId(fracId);
@@ -577,7 +582,7 @@ export default function Dashboard() {
             </button>
             {!gridCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
-                <AllocationGridContent compact externalStartDate={gridStartDate} selectedDate={selectedDate} />
+                <AllocationGridContent compact externalStartDate={gridStartDate} externalDaysVisible={gridDaysVisible} selectedDate={selectedDate} />
               </div>
             )}
           </div>
@@ -592,6 +597,7 @@ export default function Dashboard() {
         allocations={allocations}
         haulers={haulers}
         scenarioId={activeScenarioId}
+        conflicts={conflicts}
       />
 
       <ConflictSheet

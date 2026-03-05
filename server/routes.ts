@@ -691,17 +691,21 @@ export async function registerRoutes(
     const scenarioId = Number(req.params.scenarioId);
     if (isNaN(scenarioId)) return res.status(400).json({ message: "Invalid scenario ID" });
 
-    const [allSchedules, allAllocations, allHaulers, allFracJobs, allLanes] = await Promise.all([
+    const [allSchedules, allAllocations, allHaulers, allFracJobs, allLanes, scenario] = await Promise.all([
       storage.getSchedulesByScenario(scenarioId),
       storage.getAllocationsByScenario(scenarioId),
       storage.getHaulers(),
       storage.getFracJobs(),
       storage.getLanes(),
+      storage.getScenario(scenarioId),
     ]);
 
     const fracMap = new Map(allFracJobs.map(f => [f.id, f]));
     const haulerMap = new Map(allHaulers.map(h => [h.id, h]));
     const laneMap = new Map(allLanes.map(l => [l.id, l]));
+
+    const exportDate = new Date().toISOString().split("T")[0];
+    const scenarioName = scenario?.name || "Unknown";
 
     const allDates = new Set<string>();
     allSchedules.forEach(s => {
@@ -713,28 +717,38 @@ export async function registerRoutes(
       }
     });
     const sortedDates = Array.from(allDates).sort();
-    if (sortedDates.length === 0) {
-      const scenario = await storage.getScenario(scenarioId);
-      const filename = `FleetSync_${(scenario?.name || "export").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      return res.send("Lane,Frac,Hauler\n");
-    }
 
     const escape = (val: string | number) => {
       const s = String(val);
       return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
+    const filename = `FleetSync_${scenarioName.replace(/[^a-zA-Z0-9]/g, "_")}_${exportDate}.csv`;
+
+    if (sortedDates.length === 0) {
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(`Scenario:,${escape(scenarioName)}\nExport Date:,${exportDate}\n\nLane,Frac,Hauler\n`);
+    }
+
     const rows: string[] = [];
+    rows.push(`Scenario:,${escape(scenarioName)}`);
+    rows.push(`Export Date:,${exportDate}`);
+    rows.push("");
     rows.push(["Lane", "Frac", "Hauler", ...sortedDates].map(escape).join(","));
 
+    let isFirstFrac = true;
     for (const schedule of allSchedules) {
       const frac = fracMap.get(schedule.fracJobId);
       if (!frac) continue;
       const lane = laneMap.get(frac.laneId);
       const fracAllocations = allAllocations.filter(a => a.fracJobId === schedule.fracJobId);
       const haulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+
+      if (!isFirstFrac) {
+        rows.push(Array(sortedDates.length + 3).fill("").join(","));
+      }
+      isFirstFrac = false;
 
       if (haulerIds.length === 0) {
         const values = sortedDates.map(ds =>
@@ -755,6 +769,8 @@ export async function registerRoutes(
       }
     }
 
+    rows.push(Array(sortedDates.length + 3).fill("").join(","));
+
     const haulerTotalValues = sortedDates.map(ds => {
       const total = allAllocations
         .filter(a => a.startDate <= ds && a.endDate >= ds)
@@ -771,9 +787,112 @@ export async function registerRoutes(
     });
     rows.push(["", escape("Frac Needs Total"), "", ...fracNeedValues].join(","));
 
-    const scenario = await storage.getScenario(scenarioId);
-    const filename = `FleetSync_${(scenario?.name || "export").replace(/[^a-zA-Z0-9]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(rows.join("\n"));
+  });
 
+  app.get("/api/frac-jobs/:id/report", isAuthenticated, async (req, res) => {
+    const fracJobId = Number(req.params.id);
+    const scenarioId = Number(req.query.scenarioId);
+    if (isNaN(fracJobId) || isNaN(scenarioId)) return res.status(400).json({ message: "Invalid parameters" });
+
+    const [fracJob, scenario, allSchedules, allAllocations, allHaulers, allLanes, events] = await Promise.all([
+      storage.getFracJob(fracJobId),
+      storage.getScenario(scenarioId),
+      storage.getSchedulesByScenario(scenarioId),
+      storage.getAllocationsByScenario(scenarioId),
+      storage.getHaulers(),
+      storage.getLanes(),
+      storage.getEventsByFracAndScenario(fracJobId, scenarioId),
+    ]);
+
+    if (!fracJob) return res.status(404).json({ message: "Frac job not found" });
+
+    const schedule = allSchedules.find(s => s.fracJobId === fracJobId);
+    const lane = allLanes.find(l => l.id === fracJob.laneId);
+    const haulerMap = new Map(allHaulers.map(h => [h.id, h]));
+    const fracAllocations = allAllocations.filter(a => a.fracJobId === fracJobId);
+    const exportDate = new Date().toISOString().split("T")[0];
+
+    const escape = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return "";
+      const s = String(val);
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows: string[] = [];
+
+    rows.push(`Frac Report: ${escape(fracJob.padName)}`);
+    rows.push(`Scenario:,${escape(scenario?.name || "Unknown")}`);
+    rows.push(`Export Date:,${exportDate}`);
+    rows.push("");
+
+    rows.push("FRAC DETAILS");
+    rows.push(`Pad Name:,${escape(fracJob.padName)}`);
+    rows.push(`Customer:,${escape(fracJob.customer)}`);
+    rows.push(`Basin:,${escape(fracJob.basin)}`);
+    rows.push(`Lane:,${escape(lane?.name)}`);
+    rows.push(`Stages/Day:,${fracJob.stagesPerDay ?? ""}`);
+    rows.push(`Tons/Stage:,${fracJob.tonsPerStage ?? ""}`);
+    rows.push(`Total Stages:,${fracJob.totalStages ?? ""}`);
+    rows.push(`Travel Time (hrs):,${fracJob.travelTimeHours ?? ""}`);
+    rows.push(`Avg Tons/Load:,${fracJob.avgTonsPerLoad ?? ""}`);
+    rows.push(`Storage:,${fracJob.storageType ? `${fracJob.storageType} (${fracJob.storageCapacity}t)` : ""}`);
+    if (fracJob.notes) rows.push(`Notes:,${escape(fracJob.notes)}`);
+    rows.push("");
+
+    if (schedule) {
+      rows.push("SCHEDULE INFO");
+      rows.push(`Start Date:,${schedule.plannedStartDate}`);
+      rows.push(`End Date:,${schedule.plannedEndDate}`);
+      rows.push(`Status:,${schedule.status}`);
+      rows.push(`Required Trucks/Shift:,${schedule.requiredTrucksPerShift}`);
+      rows.push(`Transition Days After:,${schedule.transitionDaysAfter}`);
+      rows.push("");
+
+      const dailyDates: string[] = [];
+      let d = new Date(schedule.plannedStartDate);
+      const end = new Date(schedule.plannedEndDate);
+      while (d <= end) {
+        dailyDates.push(d.toISOString().split("T")[0]);
+        d.setDate(d.getDate() + 1);
+      }
+
+      rows.push("DAILY TRUCK SUMMARY");
+      rows.push("Date,Trucks Expected,Trucks Assigned,Delta");
+      for (const ds of dailyDates) {
+        const expected = getEffectiveTrucksForDate(schedule, ds);
+        const assigned = fracAllocations
+          .filter(a => a.startDate <= ds && a.endDate >= ds)
+          .reduce((sum, a) => sum + a.trucksPerShift, 0);
+        const delta = assigned - expected;
+        rows.push(`${ds},${expected},${assigned},${delta}`);
+      }
+      rows.push("");
+    }
+
+    if (events.length > 0) {
+      const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date));
+      rows.push("NPT / EVENTS");
+      rows.push("Date,Category,Hours Lost,Notes");
+      for (const evt of sortedEvents) {
+        rows.push([evt.date, escape(evt.category), evt.hoursLost ?? "", escape(evt.notes)].join(","));
+      }
+      rows.push("");
+    }
+
+    if (fracAllocations.length > 0) {
+      rows.push("HAULER ASSIGNMENTS");
+      rows.push("Hauler,Start Date,End Date,Trucks/Shift");
+      const sortedAllocs = [...fracAllocations].sort((a, b) => a.startDate.localeCompare(b.startDate));
+      for (const alloc of sortedAllocs) {
+        const hauler = haulerMap.get(alloc.haulerId);
+        rows.push([escape(hauler?.name || `Hauler #${alloc.haulerId}`), alloc.startDate, alloc.endDate, alloc.trucksPerShift].join(","));
+      }
+    }
+
+    const filename = `FleetSync_FracReport_${fracJob.padName.replace(/[^a-zA-Z0-9]/g, "_")}_${exportDate}.csv`;
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(rows.join("\n"));

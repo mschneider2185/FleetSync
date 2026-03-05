@@ -11,11 +11,19 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Plus, Copy } from "lucide-react";
+import { Trash2, Plus, Copy, Download, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, FracDailyEvent } from "@shared/schema";
+
+interface Conflict {
+  type: string;
+  date: string;
+  entityId: number;
+  entityName: string;
+  detail: string;
+}
 
 interface FracDetailPanelProps {
   open: boolean;
@@ -25,6 +33,7 @@ interface FracDetailPanelProps {
   allocations: AllocationBlock[];
   haulers: Hauler[];
   scenarioId?: number;
+  conflicts?: Conflict[];
 }
 
 interface TruckRecommendation {
@@ -85,7 +94,7 @@ function getCategoryColor(category: string): string {
   return colors[category] || colors.OTHER;
 }
 
-export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers, scenarioId }: FracDetailPanelProps) {
+export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers, scenarioId, conflicts = [] }: FracDetailPanelProps) {
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
 
   if (!fracJob) return null;
@@ -112,6 +121,20 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
               <span className={`text-xs px-2 py-0.5 rounded-md ${statusColor[schedule.status] || ""}`}>
                 {schedule.status}
               </span>
+            )}
+            {scenarioId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  window.open(`/api/frac-jobs/${fracJob.id}/report?scenarioId=${scenarioId}`, "_blank");
+                }}
+                data-testid="button-frac-report"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Report
+              </Button>
             )}
             <Button
               variant="outline"
@@ -329,6 +352,7 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
           </TabsContent>
 
           <TabsContent value="journal" className="space-y-3 pt-2">
+            <FracConflictsSection conflicts={conflicts} fracJobId={fracJob.id} />
             <JournalTab fracJobId={fracJob.id} scenarioId={scenarioId} />
           </TabsContent>
         </Tabs>
@@ -463,6 +487,105 @@ function TruckOverridesSection({ schedule, scenarioId }: { schedule: ScenarioFra
               </Button>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CONFLICT_LABELS: Record<string, { label: string; color: string }> = {
+  frac_under_supplied: { label: "Under-Supplied", color: "text-red-600 dark:text-red-400" },
+  hauler_over_capacity: { label: "Hauler Over-Capacity", color: "text-red-600 dark:text-red-400" },
+  frac_over_supplied: { label: "Over-Supplied", color: "text-amber-600 dark:text-amber-400" },
+  hauler_split_warning: { label: "Hauler Split Warning", color: "text-amber-600 dark:text-amber-400" },
+};
+
+function collapseConflictRanges(dates: { date: string; detail: string }[]) {
+  if (dates.length === 0) return [];
+  const sorted = [...dates].sort((a, b) => a.date.localeCompare(b.date));
+  const ranges: { startDate: string; endDate: string; detail: string; count: number }[] = [];
+  let current = { startDate: sorted[0].date, endDate: sorted[0].date, detail: sorted[0].detail, count: 1 };
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prevDate = new Date(current.endDate);
+    prevDate.setDate(prevDate.getDate() + 1);
+    const nextDay = prevDate.toISOString().split("T")[0];
+
+    if (sorted[i].date === nextDay && sorted[i].detail === current.detail) {
+      current.endDate = sorted[i].date;
+      current.count++;
+    } else {
+      ranges.push(current);
+      current = { startDate: sorted[i].date, endDate: sorted[i].date, detail: sorted[i].detail, count: 1 };
+    }
+  }
+  ranges.push(current);
+  return ranges;
+}
+
+function formatConflictDate(dateStr: string) {
+  const [y, m, d] = dateStr.split("-");
+  return `${parseInt(m)}/${parseInt(d)}`;
+}
+
+function FracConflictsSection({ conflicts, fracJobId }: { conflicts: Conflict[]; fracJobId: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const fracConflicts = conflicts.filter(c =>
+    (c.type === "frac_under_supplied" || c.type === "frac_over_supplied") && c.entityId === fracJobId
+  );
+
+  if (fracConflicts.length === 0) return null;
+
+  const grouped: Record<string, Conflict[]> = {};
+  for (const c of fracConflicts) {
+    if (!grouped[c.type]) grouped[c.type] = [];
+    grouped[c.type].push(c);
+  }
+
+  const isHard = fracConflicts.some(c => c.type === "frac_under_supplied");
+
+  return (
+    <div className="rounded-md border overflow-hidden" data-testid="frac-conflicts-section">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
+        data-testid="button-toggle-frac-conflicts"
+      >
+        <span className={`flex items-center gap-2 ${isHard ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+          {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          <AlertTriangle className="w-3.5 h-3.5" />
+          Issues & Warnings
+        </span>
+        <Badge variant={isHard ? "destructive" : "secondary"} className="text-xs">
+          {fracConflicts.length}
+        </Badge>
+      </button>
+      {expanded && (
+        <div className="border-t px-3 py-2 space-y-2">
+          {Object.entries(grouped).map(([type, items]) => {
+            const config = CONFLICT_LABELS[type] || { label: type, color: "text-foreground" };
+            const dates = items.map(c => ({ date: c.date, detail: c.detail }));
+            const ranges = collapseConflictRanges(dates);
+            return (
+              <div key={type} data-testid={`frac-conflict-type-${type}`}>
+                <p className={`text-xs font-medium mb-1 ${config.color}`}>{config.label}</p>
+                <div className="space-y-0.5">
+                  {ranges.map((r, j) => (
+                    <div key={j} className="text-xs text-muted-foreground flex items-start gap-2">
+                      <span className="font-mono shrink-0 w-24">
+                        {r.startDate === r.endDate
+                          ? formatConflictDate(r.startDate)
+                          : `${formatConflictDate(r.startDate)} - ${formatConflictDate(r.endDate)}`}
+                        {r.count > 1 && <span className="text-muted-foreground/60"> ({r.count}d)</span>}
+                      </span>
+                      <span>{r.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

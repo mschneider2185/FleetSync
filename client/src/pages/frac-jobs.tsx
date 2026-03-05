@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, CalendarPlus, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, CalendarPlus, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { Lane, FracJob, ScenarioFracSchedule, Scenario } from "@shared/schema";
 
@@ -37,6 +37,9 @@ export default function FracJobs() {
   const [editScheduleId, setEditScheduleId] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     startDate: "", endDate: "", requiredTrucksPerShift: 10, transitionDaysAfter: 2, status: "planned",
+  });
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    archived: true,
   });
 
   const { data: fracJobs = [], isLoading } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
@@ -149,104 +152,158 @@ export default function FracJobs() {
               </Button>
             </div>
           </div>
-        ) : (
-          <div className="grid gap-3">
-            {fracJobs.map(job => {
-              const lane = laneMap.get(job.laneId);
-              const schedule = scheduleMap.get(job.id);
-              const tonsPerDay = (job.stagesPerDay && job.tonsPerStage) ? job.stagesPerDay * job.tonsPerStage : null;
+        ) : (() => {
+          const activeJobs: FracJob[] = [];
+          const plannedJobs: FracJob[] = [];
+          const archivedJobs: FracJob[] = [];
 
-              return (
-                <Card key={job.id} className="p-4" data-testid={`card-frac-${job.id}`}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {lane && (
-                          <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: lane.color }} />
-                        )}
-                        <span className="font-semibold text-base">{job.padName}</span>
-                        <Badge variant="secondary" className="text-[10px]">{lane?.name || "No lane"}</Badge>
-                        {schedule && (
-                          <Badge
-                            variant={schedule.status === "active" ? "default" : "outline"}
-                            className="text-[10px]"
-                          >
-                            {schedule.status}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm text-muted-foreground">
-                        {job.customer && <span>Customer: {job.customer}</span>}
-                        {job.basin && <span>Basin: {job.basin}</span>}
-                        {job.stagesPerDay && <span>{job.stagesPerDay} stg/day</span>}
-                        {tonsPerDay && <span>{tonsPerDay.toLocaleString()} tons/day</span>}
-                        {job.storageType && <span>{job.storageType} ({job.storageCapacity}t)</span>}
-                        {job.travelTimeHours && <span>{job.travelTimeHours}hr travel</span>}
-                      </div>
+          for (const job of fracJobs) {
+            const schedule = scheduleMap.get(job.id);
+            if (schedule?.status === "active") {
+              activeJobs.push(job);
+            } else if (schedule?.status === "complete") {
+              archivedJobs.push(job);
+            } else {
+              plannedJobs.push(job);
+            }
+          }
+
+          const toggleSection = (key: string) => {
+            setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+          };
+
+          const sections = [
+            { key: "active", label: "Active", jobs: activeJobs },
+            { key: "planned", label: "Planned", jobs: plannedJobs },
+            { key: "archived", label: "Archived / Completed", jobs: archivedJobs },
+          ];
+
+          const renderJobCard = (job: FracJob) => {
+            const lane = laneMap.get(job.laneId);
+            const schedule = scheduleMap.get(job.id);
+            const tonsPerDay = (job.stagesPerDay && job.tonsPerStage) ? job.stagesPerDay * job.tonsPerStage : null;
+
+            return (
+              <Card key={job.id} className="p-4" data-testid={`card-frac-${job.id}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {lane && (
+                        <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: lane.color }} />
+                      )}
+                      <span className="font-semibold text-base">{job.padName}</span>
+                      <Badge variant="secondary" className="text-[10px]">{lane?.name || "No lane"}</Badge>
                       {schedule && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>
-                            Scheduled: {format(parseISO(schedule.plannedStartDate), "MMM d")} - {format(parseISO(schedule.plannedEndDate), "MMM d, yyyy")}
-                            &ensp;&middot;&ensp;{schedule.requiredTrucksPerShift} trucks/shift
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={() => openEditSchedule(job.id, schedule)}
-                            data-testid={`button-edit-schedule-${job.id}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                        </div>
+                        <Badge
+                          variant={schedule.status === "active" ? "default" : "outline"}
+                          className="text-[10px]"
+                        >
+                          {schedule.status}
+                        </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1">
-                      {!schedule && activeScenarioId && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => openAddSchedule(job.id)}
-                          data-testid={`button-schedule-${job.id}`}
-                        >
-                          <CalendarPlus className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => { setCloneJob(job); setCloneDialogOpen(true); }}
-                        title="Clone frac job"
-                        data-testid={`button-clone-frac-${job.id}`}
-                      >
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      {!isSandbox && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                      {job.customer && <span>Customer: {job.customer}</span>}
+                      {job.basin && <span>Basin: {job.basin}</span>}
+                      {job.stagesPerDay && <span>{job.stagesPerDay} stg/day</span>}
+                      {tonsPerDay && <span>{tonsPerDay.toLocaleString()} tons/day</span>}
+                      {job.storageType && <span>{job.storageType} ({job.storageCapacity}t)</span>}
+                      {job.travelTimeHours && <span>{job.travelTimeHours}hr travel</span>}
+                    </div>
+                    {schedule && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          Scheduled: {format(parseISO(schedule.plannedStartDate), "MMM d")} - {format(parseISO(schedule.plannedEndDate), "MMM d, yyyy")}
+                          &ensp;&middot;&ensp;{schedule.requiredTrucksPerShift} trucks/shift
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => { setEditJob(job); setDialogOpen(true); }}
-                          data-testid={`button-edit-frac-${job.id}`}
+                          className="h-5 w-5"
+                          onClick={() => openEditSchedule(job.id, schedule)}
+                          data-testid={`button-edit-schedule-${job.id}`}
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil className="w-3 h-3" />
                         </Button>
-                      )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {!schedule && activeScenarioId && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => openAddSchedule(job.id)}
+                        data-testid={`button-schedule-${job.id}`}
+                      >
+                        <CalendarPlus className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setCloneJob(job); setCloneDialogOpen(true); }}
+                      title="Clone frac job"
+                      data-testid={`button-clone-frac-${job.id}`}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    {!isSandbox && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteMutation.mutate(job.id)}
-                        title={isSandbox ? "Remove from sandbox" : "Delete frac job"}
-                        data-testid={`button-delete-frac-${job.id}`}
+                        onClick={() => { setEditJob(job); setDialogOpen(true); }}
+                        data-testid={`button-edit-frac-${job.id}`}
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                        <Pencil className="w-4 h-4" />
                       </Button>
-                    </div>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteMutation.mutate(job.id)}
+                      title={isSandbox ? "Remove from sandbox" : "Delete frac job"}
+                      data-testid={`button-delete-frac-${job.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
                   </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                </div>
+              </Card>
+            );
+          };
+
+          return (
+            <div className="space-y-4">
+              {sections.map(({ key, label, jobs }) => (
+                <div key={key} data-testid={`section-${key}`}>
+                  <button
+                    className="flex items-center gap-2 w-full text-left py-2 px-1 rounded-md hover-elevate"
+                    onClick={() => toggleSection(key)}
+                    data-testid={`button-toggle-${key}`}
+                  >
+                    {collapsedSections[key] ? (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span className="font-semibold text-sm">{label}</span>
+                    <Badge variant="secondary" className="text-[10px]">{jobs.length}</Badge>
+                  </button>
+                  {!collapsedSections[key] && (
+                    <div className="grid gap-3 mt-1">
+                      {jobs.length === 0 ? (
+                        <p className="text-sm text-muted-foreground px-6 py-2">No frac jobs in this section</p>
+                      ) : (
+                        jobs.map(renderJobCard)
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       <FracJobDialog

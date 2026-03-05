@@ -25,7 +25,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 ## Key Features (MVP)
 - Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, visible horizontal scrollbar, and amber dot indicators for days with journal entries (fetched via `GET /api/scenarios/:id/events`)
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
-- Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), date sync between views, and clickable date column highlighting
+- Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), Gantt→Grid timeframe sync (scroll/zoom Gantt updates grid's visible date range and column count), and clickable date column highlighting
 - Inline cell editing in allocation grid: double-click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
 - Bulk editing in allocation grid: (1) click to select a cell, Shift+click to extend range, then use bulk toolbar to apply a value or clear the range; (2) drag-to-fill handle on right edge of valued cells to copy value across adjacent dates; (3) pencil edit button on hover of hauler row labels opens pre-filled AllocationDialog for editing entire blocks
 - Scenario management (Actual/Sandbox) with sandbox creation (copy-from-parent or blank canvas "Start from scratch") and role-based access (planner vs viewer)
@@ -34,12 +34,14 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Hauler management with capacity tracking; over-capacity allocations show a confirmation warning (422 + `requiresConfirmation`) instead of hard-blocking, allowing users to accept or cancel via AlertDialog; `force: true` bypasses the check
 - Real-time conflict detection (over-capacity, under-supplied, over-supplied, hauler split warnings) with orphaned schedule protection
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
-- Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, and daily journal
+- Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, daily journal with collapsible frac-specific conflicts section (Issues & Warnings with collapsed date ranges), and per-frac CSV report export button
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
 - Frac Needs Total footer row in allocation grid: sums required trucks across active/planned/complete schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
 - CSV export includes Hauler Totals and Frac Needs Total summary rows at the bottom of the grid data
 - Frac-level cloning: Clone button on frac cards and detail panel, pre-fills all frac data with "(Copy)" suffix, includes schedule fields for immediate scheduling
 - Date-segmented truck requirements: `truckRequirementOverrides` JSON on schedules allows forward-only changes (e.g., change trucks from date X onward); helper `getEffectiveTrucksForDate()` used in grid, footer, and conflict detection
+- Frac Jobs page with collapsible Active/Planned/Archived sections (based on schedule status), defaulting Archived to collapsed
+- Allocation grid date presets (1W/2W/1M/Q) in standalone mode: snap start date to period start (week Monday, month 1st, quarter 1st) and set day count; date navigation slider for smooth scrolling ±180 days
 - Lane management panel (create, rename, recolor, delete lanes)
 - Schedule editing from Frac Jobs page (both add and edit schedule dates/trucks/status)
 - Step-by-step truck recommendation breakdown in demand tab
@@ -126,8 +128,10 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - Frac over/under supply detected in conflict engine but does not block saves
 
 ## CSV Export
-- `GET /api/scenarios/:scenarioId/export` returns CSV file with Lane, Frac, Hauler columns + date columns
+- `GET /api/scenarios/:scenarioId/export` returns CSV with scenario name + export date header rows, blank rows between frac sections, Lane/Frac/Hauler columns + date columns, plus Hauler Totals and Frac Needs Total summary rows
+- `GET /api/frac-jobs/:id/report?scenarioId=X` returns per-frac CSV report with frac details, schedule info, daily trucks expected vs assigned, NPT events, and hauler assignment summary
 - Export button in allocation grid toolbar (non-compact mode only)
+- Per-frac "Report" button in frac detail panel header (when scenario is selected)
 
 ## Gantt Features
 - Drag entire bar to move schedule start+end together
