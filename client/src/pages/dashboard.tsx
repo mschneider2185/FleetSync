@@ -596,7 +596,7 @@ export default function Dashboard() {
         schedule={selectedSchedule}
         allocations={allocations}
         haulers={haulers}
-        scenarioId={activeScenarioId}
+        scenarioId={activeScenarioId ?? undefined}
         conflicts={conflicts}
       />
 

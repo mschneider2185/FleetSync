@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { BarChart3, Calendar, Truck, HardHat, LogOut } from "lucide-react";
+import { BarChart3, Calendar, Truck, HardHat, FileUp, LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +21,7 @@ const navItems = [
   { title: "Allocation Grid", url: "/allocation-grid", icon: BarChart3 },
   { title: "Frac Jobs", url: "/frac-jobs", icon: HardHat },
   { title: "Haulers", url: "/haulers", icon: Truck },
+  { title: "Import", url: "/import", icon: FileUp },
 ];
 
 export function AppSidebar() {

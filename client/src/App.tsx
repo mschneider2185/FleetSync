@@ -13,6 +13,7 @@ import Dashboard from "@/pages/dashboard";
 import AllocationGridPage from "@/pages/allocation-grid";
 import FracJobsPage from "@/pages/frac-jobs";
 import HaulersPage from "@/pages/haulers";
+import ImportPage from "@/pages/import";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/allocation-grid" component={AllocationGridPage} />
       <Route path="/frac-jobs" component={FracJobsPage} />
       <Route path="/haulers" component={HaulersPage} />
+      <Route path="/import" component={ImportPage} />
       <Route component={NotFound} />
     </Switch>
   );

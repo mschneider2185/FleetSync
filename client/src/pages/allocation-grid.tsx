@@ -551,7 +551,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, exte
     const map = new Map<number, number[]>();
     for (const schedule of activeSchedules) {
       const fracAllocations = allocations.filter(a => a.fracJobId === schedule.fracJobId);
-      const haulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+      const haulerIds = Array.from(new Set(fracAllocations.map(a => a.haulerId)));
       map.set(schedule.fracJobId, haulerIds);
     }
     return map;

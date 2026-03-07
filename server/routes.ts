@@ -16,6 +16,12 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
+import multer from "multer";
+import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
+import { parseSandplanCsv } from "./import/sandplan-csv";
+import { resolveImportScenario, runSandplanImport } from "./import/run-import";
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 function validateBody(schema: any, body: any) {
   return schema.parse(body);
@@ -311,55 +317,16 @@ export async function registerRoutes(
       const data = await storage.updateSchedule(scheduleId, validated);
       if (!data) return res.status(404).json({ message: "Not found" });
 
-      const cascadedSchedules: Array<{ id: number; plannedStartDate: string; plannedEndDate: string }> = [];
-
+      let cascadedSchedules: Array<{ id: number; plannedStartDate: string; plannedEndDate: string }> = [];
       if (validated.plannedEndDate && validated.plannedEndDate > oldSchedule.plannedEndDate) {
-        const frac = await storage.getFracJob(oldSchedule.fracJobId);
-        if (frac) {
-          const allSchedules = await storage.getSchedulesByScenario(oldSchedule.scenarioId);
-          const allFracJobs = await storage.getFracJobs();
-          const fracMap = new Map(allFracJobs.map(f => [f.id, f]));
-
-          const laneSchedules = allSchedules
-            .filter(s => {
-              const f = fracMap.get(s.fracJobId);
-              return f && f.laneId === frac.laneId && s.id !== scheduleId;
-            })
-            .sort((a, b) => a.plannedStartDate.localeCompare(b.plannedStartDate));
-
-          let prevEnd = validated.plannedEndDate;
-          let prevTransition = data.transitionDaysAfter || 0;
-
-          for (const downstream of laneSchedules) {
-            if (downstream.plannedStartDate <= oldSchedule.plannedStartDate) continue;
-
-            const prevEndDate = new Date(prevEnd);
-            prevEndDate.setDate(prevEndDate.getDate() + prevTransition);
-            const earliestStart = prevEndDate.toISOString().split("T")[0];
-
-            if (downstream.plannedStartDate > earliestStart) break;
-
-            const dStart = new Date(downstream.plannedStartDate);
-            const dEnd = new Date(downstream.plannedEndDate);
-            const durationMs = dEnd.getTime() - dStart.getTime();
-
-            const newStartDate = new Date(prevEnd);
-            newStartDate.setDate(newStartDate.getDate() + prevTransition + 1);
-            const newStart = newStartDate.toISOString().split("T")[0];
-            const newEndDate = new Date(newStartDate.getTime() + durationMs);
-            const newEnd = newEndDate.toISOString().split("T")[0];
-
-            await storage.updateSchedule(downstream.id, {
-              plannedStartDate: newStart,
-              plannedEndDate: newEnd,
-            });
-
-            cascadedSchedules.push({ id: downstream.id, plannedStartDate: newStart, plannedEndDate: newEnd });
-
-            prevEnd = newEnd;
-            prevTransition = downstream.transitionDaysAfter || 0;
-          }
-        }
+        cascadedSchedules = await runLaneCascadeAfterEndDateExtend(
+          storage,
+          oldSchedule.scenarioId,
+          scheduleId,
+          { fracJobId: oldSchedule.fracJobId, plannedStartDate: oldSchedule.plannedStartDate },
+          validated.plannedEndDate,
+          data.transitionDaysAfter ?? 0
+        );
       }
 
       res.json({ ...data, cascadedSchedules });
@@ -374,6 +341,46 @@ export async function registerRoutes(
     if (!(await checkScenarioEditable(req, res, schedule.scenarioId))) return;
     await storage.deleteSchedule(schedule.id);
     res.json({ ok: true });
+  });
+
+  app.post("/api/import/sandplan/preview", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const file = req.file;
+      if (!file?.buffer) return res.status(400).json({ message: "No file uploaded; use field name 'file'" });
+      const { rows, warnings, detectedMappings } = parseSandplanCsv(file.buffer);
+      return res.json({ ok: true, normalizedRows: rows, detectedMappings, warnings });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return res.status(400).json({ message });
+    }
+  });
+
+  app.post("/api/import/sandplan", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      const file = req.file;
+      if (!file?.buffer) return res.status(400).json({ message: "No file uploaded; use field name 'file'" });
+      const scenarioIdParam = req.query.scenarioId != null ? Number(req.query.scenarioId) : undefined;
+
+      const { scenarioId, created } = await resolveImportScenario(storage, scenarioIdParam);
+      if (!(await checkScenarioEditable(req, res, scenarioId))) return;
+
+      const { rows, warnings: parseWarnings } = parseSandplanCsv(file.buffer);
+      const { summary } = await runSandplanImport(storage, scenarioId, rows);
+      const warnings = [...parseWarnings, ...summary.warnings];
+
+      return res.json({
+        ok: true,
+        scenarioId,
+        summary: {
+          ...summary,
+          warnings,
+        },
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (message === "Scenario not found") return res.status(404).json({ message });
+      return res.status(400).json({ message });
+    }
   });
 
   app.get("/api/haulers", isAuthenticated, async (_req, res) => {
@@ -446,7 +453,7 @@ export async function registerRoutes(
     while (d <= end) {
       const ds = d.toISOString().split("T")[0];
       const exception = exceptions.find(e => e.date === ds);
-      const cap = exception ? exception.maxTrucksPerShift : maxCap;
+      const cap = exception ? (exception.maxTrucksPerShift ?? maxCap) : maxCap;
 
       let totalOnDay = trucksPerShift;
       for (const a of allAllocations) {
@@ -743,7 +750,7 @@ export async function registerRoutes(
       if (!frac) continue;
       const lane = laneMap.get(frac.laneId);
       const fracAllocations = allAllocations.filter(a => a.fracJobId === schedule.fracJobId);
-      const haulerIds = [...new Set(fracAllocations.map(a => a.haulerId))];
+      const haulerIds = Array.from(new Set(fracAllocations.map(a => a.haulerId)));
 
       if (!isFirstFrac) {
         rows.push(Array(sortedDates.length + 3).fill("").join(","));

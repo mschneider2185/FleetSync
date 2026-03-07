@@ -9,7 +9,7 @@ After sign-in you land on the main app with the sidebar and the Gantt Schedule (
 2. Understand the layout
 
 Sidebar (left)
-- Planning: Gantt Schedule, Allocation Grid, Frac Jobs, Haulers.
+- Planning: Gantt Schedule, Allocation Grid, Frac Jobs, Haulers, Import.
 - Footer: Your avatar (initials-based), name, email, and a Logout icon.
 
 Header: Page title and main actions (scenario selector, Add Job, Lanes, etc.).
@@ -133,3 +133,28 @@ Suggested demo: Create an over-capacity or under-supplied case in the grid, open
 11. Export
 
 CSV: On the Allocation Grid page, click Export CSV to download a CSV of the full grid. The export includes all hauler allocation data plus Hauler Totals and Frac Needs Total summary rows at the bottom.
+
+12. Sand Planning import
+
+You can import planning dates and sand inputs from a CSV export of your Sand Planning sheet (e.g. "Sand Planning.xlsx"). This updates or creates frac jobs and schedules in a scenario; the Allocation Grid and Gantt then reflect the new dates and requirements. Allocations are not changed by import.
+
+How to export:
+- Export the Sand Planning sheet to CSV from Excel or your spreadsheet tool (Save As or Export as CSV). Column names can vary; the import maps common synonyms (pad name, start/end dates, stages per day, tons per stage, lane, etc.).
+
+How to import:
+- Open the Import page from the sidebar.
+- Optionally select a scenario in the header (or leave the default to use or create a "Baseline Plan" scenario).
+- Choose a CSV file and click Import.
+- Review the result summary (rows processed, frac jobs and schedules created or updated, skipped rows) and any warnings.
+
+After import:
+- The Allocation Grid and Gantt Schedule show the updated schedules and requirements for the chosen scenario. Frac Jobs lists the imported fracs. Allocations remain manual.
+
+Manual test checklist:
+1. Export Sand Planning sheet to CSV.
+2. Import into Baseline scenario (or create Baseline Plan if none).
+3. Verify frac jobs created/updated and visible (e.g. Frac Jobs page).
+4. Verify schedules appear in the Allocation Grid date range.
+5. Change one row's end date in the CSV to extend; re-import; verify downstream fracs in the same lane are pushed right (cascade).
+6. Re-import the same CSV; verify no duplicates (updates only).
+7. Import a CSV with one row missing padName; verify that row is skipped and a warning is shown.

@@ -18,6 +18,7 @@ import { eq, and, lte, gte, ne } from "drizzle-orm";
 export interface IStorage {
   getLanes(): Promise<Lane[]>;
   getLane(id: number): Promise<Lane | undefined>;
+  getLaneByName(name: string): Promise<Lane | undefined>;
   createLane(lane: InsertLane): Promise<Lane>;
   updateLane(id: number, lane: Partial<InsertLane>): Promise<Lane | undefined>;
   deleteLane(id: number): Promise<void>;
@@ -79,6 +80,10 @@ export class DatabaseStorage implements IStorage {
   }
   async getLane(id: number): Promise<Lane | undefined> {
     const [lane] = await db.select().from(lanes).where(eq(lanes.id, id));
+    return lane;
+  }
+  async getLaneByName(name: string): Promise<Lane | undefined> {
+    const [lane] = await db.select().from(lanes).where(eq(lanes.name, name));
     return lane;
   }
   async createLane(lane: InsertLane): Promise<Lane> {
