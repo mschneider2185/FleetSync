@@ -35,6 +35,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Real-time conflict detection (over-capacity, under-supplied, over-supplied, hauler split warnings) with orphaned schedule protection
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, daily journal with collapsible frac-specific conflicts section (Issues & Warnings with collapsed date ranges), and per-frac CSV report export button
+- Sand Plan import supports both CSV and Excel (.xlsx/.xls) files via SheetJS (`xlsx` package); auto-detects format by magic bytes
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
 - Frac Needs Total footer row in allocation grid: sums required trucks across active/planned/complete schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
 - CSV export includes Hauler Totals and Frac Needs Total summary rows at the bottom of the grid data
