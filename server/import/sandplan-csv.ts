@@ -1,6 +1,5 @@
 import { parse } from "csv-parse/sync";
 import { format, parseISO, addDays, isValid } from "date-fns";
-import * as XLSX from "xlsx";
 
 /** Canonical keys we expect after mapping */
 export type NormalizedSandplanRow = {
@@ -138,51 +137,8 @@ export interface ParseSandplanCsvResult {
   detectedMappings?: Record<string, string>;
 }
 
-function isExcelBuffer(buffer: Buffer): boolean {
-  if (buffer.length < 4) return false;
-  if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) return true;
-  if (buffer.length >= 8 && buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0) return true;
-  return false;
-}
-
-function parseExcelBuffer(buffer: Buffer, warnings: string[], detectedMappings: Record<string, string>): Record<string, string>[] {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-  if (workbook.SheetNames.length === 0) {
-    throw new Error("Excel file contains no sheets");
-  }
-  if (workbook.SheetNames.length > 1) {
-    warnings.push(`Excel file has ${workbook.SheetNames.length} sheets; using first sheet "${workbook.SheetNames[0]}".`);
-  }
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rawRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
-  if (rawRows.length === 0) {
-    throw new Error("Excel sheet is empty");
-  }
-
-  const rawHeaders = (rawRows[0] as unknown[]).map((h) => String(h).trim());
-  const mappedHeaders = rawHeaders.map((h) => {
-    const mapped = mapHeader(h);
-    if (h !== mapped) detectedMappings[h] = mapped;
-    return mapped;
-  });
-
-  const records: Record<string, string>[] = [];
-  for (let r = 1; r < rawRows.length; r++) {
-    const row = rawRows[r] as unknown[];
-    const allEmpty = row.every((cell) => String(cell ?? "").trim() === "");
-    if (allEmpty) continue;
-    const obj: Record<string, string> = {};
-    for (let c = 0; c < mappedHeaders.length; c++) {
-      const cell = row[c];
-      obj[mappedHeaders[c]] = String(cell ?? "").trim();
-    }
-    records.push(obj);
-  }
-  return records;
-}
-
 /**
- * Parse CSV or Excel buffer and normalize rows for Sand Planning import.
+ * Parse CSV buffer and normalize rows for Sand Planning import.
  * Does not touch DB.
  */
 export function parseSandplanCsv(buffer: Buffer): ParseSandplanCsvResult {
@@ -190,35 +146,25 @@ export function parseSandplanCsv(buffer: Buffer): ParseSandplanCsvResult {
   const detectedMappings: Record<string, string> = {};
 
   let records: Record<string, string>[];
-
-  if (isExcelBuffer(buffer)) {
-    try {
-      records = parseExcelBuffer(buffer, warnings, detectedMappings);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Excel parse failed: ${msg}`);
-    }
-  } else {
-    try {
-      records = parse(buffer, {
-        columns: (rawHeaders: string[]) =>
-          rawHeaders.map((h) => {
-            const mapped = mapHeader(h);
-            if (h !== mapped) detectedMappings[h] = mapped;
-            return mapped;
-          }),
-        skip_empty_lines: true,
-        trim: true,
-        relax_column_count: true,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`CSV parse failed: ${msg}`);
-    }
+  try {
+    records = parse(buffer, {
+      columns: (rawHeaders: string[]) =>
+        rawHeaders.map((h) => {
+          const mapped = mapHeader(h);
+          if (h !== mapped) detectedMappings[h] = mapped;
+          return mapped;
+        }),
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`CSV parse failed: ${msg}`);
   }
 
   if (records.length === 0) {
-    return { rows: [], warnings: ["File has no data rows."], detectedMappings };
+    return { rows: [], warnings: ["CSV has no data rows."], detectedMappings };
   }
 
   const seenPadNames = new Set<string>();

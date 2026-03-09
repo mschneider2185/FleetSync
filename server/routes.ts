@@ -21,7 +21,7 @@ import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
 import { parseSandplanCsv } from "./import/sandplan-csv";
 import { resolveImportScenario, runSandplanImport } from "./import/run-import";
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage() });
 
 function validateBody(schema: any, body: any) {
   return schema.parse(body);

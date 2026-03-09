@@ -36,7 +36,7 @@ export default function ImportPage() {
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error("Select a file first");
+      if (!file) throw new Error("Select a CSV file first");
       const url =
         activeScenarioId != null
           ? `/api/import/sandplan?scenarioId=${activeScenarioId}`
@@ -87,7 +87,7 @@ export default function ImportPage() {
       <div className="p-4 space-y-4 max-w-2xl">
         <Card>
           <CardHeader>
-            <CardTitle>Import Sand Plan</CardTitle>
+            <CardTitle>Import CSV</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -95,15 +95,14 @@ export default function ImportPage() {
               {activeScenarioId != null
                 ? scenarios.find((s) => s.id === activeScenarioId)?.name ?? "selected scenario"
                 : "default Baseline (created if missing)"}
-              . Upload your Sand Planning sheet as a CSV or Excel (.xlsx) file.
+              . Export your Sand Planning sheet as CSV, then choose the file below.
             </p>
             <div className="space-y-2">
-              <Label htmlFor="csv-file">CSV / Excel file</Label>
+              <Label htmlFor="csv-file">CSV file</Label>
               <input
                 id="csv-file"
-                data-testid="input-file-upload"
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept=".csv"
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
