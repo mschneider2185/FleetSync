@@ -37,6 +37,7 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, daily journal with collapsible frac-specific conflicts section (Issues & Warnings with collapsed date ranges), and per-frac CSV report export button
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
 - Frac Needs Total footer row in allocation grid: sums required trucks across active/planned/complete schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
+- Sand plan import supports both CSV and Excel (.xlsx/.xls) files with auto-detection; uses `xlsx` (SheetJS) package for Excel parsing with same header synonym mapping
 - CSV export includes Hauler Totals and Frac Needs Total summary rows at the bottom of the grid data
 - Frac-level cloning: Clone button on frac cards and detail panel, pre-fills all frac data with "(Copy)" suffix, includes schedule fields for immediate scheduling
 - Date-segmented truck requirements: `truckRequirementOverrides` JSON on schedules allows forward-only changes (e.g., change trucks from date X onward); helper `getEffectiveTrucksForDate()` used in grid, footer, and conflict detection

@@ -1,5 +1,6 @@
 import { parse } from "csv-parse/sync";
 import { format, parseISO, addDays, isValid } from "date-fns";
+import * as XLSX from "xlsx";
 
 /** Canonical keys we expect after mapping */
 export type NormalizedSandplanRow = {
@@ -35,9 +36,9 @@ const HEADER_SYNONYMS: Record<string, keyof NormalizedSandplanRow> = {
   enddate: "plannedEndDate",
   plannedend: "plannedEndDate",
   stagesperday: "stagesPerDay",
-  stages_day: "stagesPerDay",
+  stagesday: "stagesPerDay",
   tonsperstage: "tonsPerStage",
-  tons_stage: "tonsPerStage",
+  tonsstage: "tonsPerStage",
   totalstages: "totalStages",
   stages: "totalStages",
   travel: "travelTimeHours",
@@ -47,7 +48,7 @@ const HEADER_SYNONYMS: Record<string, keyof NormalizedSandplanRow> = {
   loadunload: "loadUnloadTimeHours",
   loadunloadtimehours: "loadUnloadTimeHours",
   storagetype: "storageType",
-  silo_kube: "storageType",
+  silokube: "storageType",
   storagecap: "storageCapacity",
   storagecapacity: "storageCapacity",
   requiredtrucks: "requiredTrucksPerShift",
@@ -88,7 +89,6 @@ export function parseDate(str: string | undefined): string | null {
   if (str == null || String(str).trim() === "") return null;
   const s = String(str).trim();
 
-  // Already ISO-like
   const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (isoMatch) {
     const d = parseISO(s);
@@ -96,7 +96,6 @@ export function parseDate(str: string | undefined): string | null {
     return null;
   }
 
-  // M/D/YYYY or M-D-YYYY
   const slashMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (slashMatch) {
     const [, month, day, year] = slashMatch;
@@ -105,7 +104,6 @@ export function parseDate(str: string | undefined): string | null {
     return null;
   }
 
-  // Excel serial date (integer days since 1900-01-01)
   const num = Number(s);
   if (Number.isInteger(num) && num > 0) {
     const excelEpoch = new Date(1899, 11, 30);
@@ -113,7 +111,6 @@ export function parseDate(str: string | undefined): string | null {
     if (isValid(d)) return format(d, "yyyy-MM-dd");
   }
 
-  // Fallback: try parsing as full ISO
   const d = new Date(s);
   if (!isNaN(d.getTime())) return format(d, "yyyy-MM-dd");
   return null;
@@ -137,8 +134,69 @@ export interface ParseSandplanCsvResult {
   detectedMappings?: Record<string, string>;
 }
 
+function isExcelBuffer(buffer: Buffer): boolean {
+  if (buffer.length < 4) return false;
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) return true;
+  if (buffer.length >= 8 &&
+    buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0 &&
+    buffer[4] === 0xa1 && buffer[5] === 0xb1 && buffer[6] === 0x1a && buffer[7] === 0xe1) return true;
+  return false;
+}
+
+function parseExcelToRecords(
+  buffer: Buffer,
+  warnings: string[],
+  detectedMappings: Record<string, string>,
+): Record<string, string>[] {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const sheetNames = workbook.SheetNames;
+  if (sheetNames.length === 0) {
+    throw new Error("Excel file contains no sheets");
+  }
+  if (sheetNames.length > 1) {
+    warnings.push(`Excel file has ${sheetNames.length} sheets; using first sheet "${sheetNames[0]}".`);
+  }
+
+  const sheet = workbook.Sheets[sheetNames[0]];
+  const rawRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: "yyyy-mm-dd" });
+
+  if (rawRows.length === 0) {
+    return [];
+  }
+
+  const headerRow = rawRows[0] as string[];
+  const mappedHeaders = headerRow.map((h) => {
+    const str = String(h ?? "").trim();
+    if (!str) return "";
+    const mapped = mapHeader(str);
+    if (str !== mapped) detectedMappings[str] = mapped;
+    return mapped;
+  });
+
+  const records: Record<string, string>[] = [];
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i] as unknown[];
+    if (!row || row.every((cell) => cell == null || String(cell).trim() === "")) continue;
+    const record: Record<string, string> = {};
+    for (let j = 0; j < mappedHeaders.length; j++) {
+      const key = mappedHeaders[j];
+      if (!key) continue;
+      const val = row[j];
+      if (val instanceof Date) {
+        record[key] = format(val, "yyyy-MM-dd");
+      } else {
+        record[key] = val != null ? String(val) : "";
+      }
+    }
+    records.push(record);
+  }
+
+  return records;
+}
+
 /**
- * Parse CSV buffer and normalize rows for Sand Planning import.
+ * Parse CSV or Excel buffer and normalize rows for Sand Planning import.
+ * Detects file type automatically from buffer magic bytes.
  * Does not touch DB.
  */
 export function parseSandplanCsv(buffer: Buffer): ParseSandplanCsvResult {
@@ -146,25 +204,35 @@ export function parseSandplanCsv(buffer: Buffer): ParseSandplanCsvResult {
   const detectedMappings: Record<string, string> = {};
 
   let records: Record<string, string>[];
-  try {
-    records = parse(buffer, {
-      columns: (rawHeaders: string[]) =>
-        rawHeaders.map((h) => {
-          const mapped = mapHeader(h);
-          if (h !== mapped) detectedMappings[h] = mapped;
-          return mapped;
-        }),
-      skip_empty_lines: true,
-      trim: true,
-      relax_column_count: true,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`CSV parse failed: ${msg}`);
+
+  if (isExcelBuffer(buffer)) {
+    try {
+      records = parseExcelToRecords(buffer, warnings, detectedMappings);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Excel parse failed: ${msg}`);
+    }
+  } else {
+    try {
+      records = parse(buffer, {
+        columns: (rawHeaders: string[]) =>
+          rawHeaders.map((h) => {
+            const mapped = mapHeader(h);
+            if (h !== mapped) detectedMappings[h] = mapped;
+            return mapped;
+          }),
+        skip_empty_lines: true,
+        trim: true,
+        relax_column_count: true,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`CSV parse failed: ${msg}`);
+    }
   }
 
   if (records.length === 0) {
-    return { rows: [], warnings: ["CSV has no data rows."], detectedMappings };
+    return { rows: [], warnings: ["File has no data rows."], detectedMappings };
   }
 
   const seenPadNames = new Set<string>();
@@ -172,7 +240,7 @@ export function parseSandplanCsv(buffer: Buffer): ParseSandplanCsvResult {
 
   for (let i = 0; i < records.length; i++) {
     const raw = records[i];
-    const rowIndex = i + 2; // 1-based + header
+    const rowIndex = i + 2;
 
     const padName = toStr(raw.padName);
     if (!padName) {
