@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, FracDailyEvent } from "@shared/schema";
+import { getEffectiveScheduleStatus } from "@/lib/schedule-status";
 
 interface Conflict {
   type: string;
@@ -102,6 +103,7 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
   const fracAllocations = allocations.filter(a => a.fracJobId === fracJob.id);
   const haulerMap = new Map(haulers.map(h => [h.id, h]));
   const recommendation = computeRecommendedTrucks(fracJob);
+  const effectiveStatus = schedule ? getEffectiveScheduleStatus(schedule) : null;
 
   const statusColor: Record<string, string> = {
     active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
@@ -118,8 +120,8 @@ export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocat
           <SheetTitle className="flex items-center gap-3">
             {fracJob.padName}
             {schedule && (
-              <span className={`text-xs px-2 py-0.5 rounded-md ${statusColor[schedule.status] || ""}`}>
-                {schedule.status}
+              <span className={`text-xs px-2 py-0.5 rounded-md ${statusColor[effectiveStatus || "planned"] || ""}`}>
+                {effectiveStatus}
               </span>
             )}
             {scenarioId && (

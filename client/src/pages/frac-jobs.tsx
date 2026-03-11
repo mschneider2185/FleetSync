@@ -21,6 +21,7 @@ import {
 import { Plus, Pencil, Trash2, CalendarPlus, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
 import type { Lane, FracJob, ScenarioFracSchedule, Scenario } from "@shared/schema";
+import { getEffectiveScheduleStatus } from "@/lib/schedule-status";
 
 export default function FracJobs() {
   const { activeScenarioId } = useScenario();
@@ -159,9 +160,10 @@ export default function FracJobs() {
 
           for (const job of fracJobs) {
             const schedule = scheduleMap.get(job.id);
-            if (schedule?.status === "active") {
+            const effectiveStatus = schedule ? getEffectiveScheduleStatus(schedule) : null;
+            if (effectiveStatus === "active") {
               activeJobs.push(job);
-            } else if (schedule?.status === "complete") {
+            } else if (effectiveStatus === "complete") {
               archivedJobs.push(job);
             } else {
               plannedJobs.push(job);
@@ -181,6 +183,7 @@ export default function FracJobs() {
           const renderJobCard = (job: FracJob) => {
             const lane = laneMap.get(job.laneId);
             const schedule = scheduleMap.get(job.id);
+            const effectiveStatus = schedule ? getEffectiveScheduleStatus(schedule) : null;
             const tonsPerDay = (job.stagesPerDay && job.tonsPerStage) ? job.stagesPerDay * job.tonsPerStage : null;
 
             return (
@@ -195,10 +198,10 @@ export default function FracJobs() {
                       <Badge variant="secondary" className="text-[10px]">{lane?.name || "No lane"}</Badge>
                       {schedule && (
                         <Badge
-                          variant={schedule.status === "active" ? "default" : "outline"}
+                          variant={effectiveStatus === "active" ? "default" : "outline"}
                           className="text-[10px]"
                         >
-                          {schedule.status}
+                          {effectiveStatus}
                         </Badge>
                       )}
                     </div>

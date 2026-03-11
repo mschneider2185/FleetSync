@@ -439,8 +439,7 @@ export default function Dashboard() {
   const selectedSchedule = schedules.find(s => s.fracJobId === selectedFracId) || null;
 
   const gridStartDate = useMemo(() => {
-    if (ganttVisibleRange) return startOfDay(parseISO(ganttVisibleRange.firstDate));
-    const dateToUse = selectedDate || viewDate;
+    const dateToUse = selectedDate || ganttVisibleRange?.firstDate || viewDate;
     if (dateToUse) return startOfDay(parseISO(dateToUse));
     return undefined;
   }, [ganttVisibleRange, selectedDate, viewDate]);
@@ -540,6 +539,7 @@ export default function Dashboard() {
                   journalEvents={journalEvents}
                   isLocked={isLocked}
                   selectedDate={selectedDate}
+                  focusedDate={selectedDate}
                   onDateSelect={setSelectedDate}
                   onViewDateChange={setViewDate}
                   onVisibleRangeChange={(firstDate, numDays) => setGanttVisibleRange({ firstDate, numDays })}
@@ -582,7 +582,13 @@ export default function Dashboard() {
             </button>
             {!gridCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
-                <AllocationGridContent compact externalStartDate={gridStartDate} externalDaysVisible={gridDaysVisible} selectedDate={selectedDate} />
+                <AllocationGridContent
+                  compact
+                  externalStartDate={gridStartDate}
+                  externalDaysVisible={gridDaysVisible}
+                  selectedDate={selectedDate}
+                  onDateSelect={setSelectedDate}
+                />
               </div>
             )}
           </div>

@@ -50,14 +50,20 @@ interface AllocationGridContentProps {
   externalStartDate?: Date;
   externalDaysVisible?: number;
   selectedDate?: string | null;
+  onDateSelect?: (dateStr: string) => void;
 }
 
-export function AllocationGridContent({ compact = false, externalStartDate, externalDaysVisible, selectedDate: selectedDateProp }: AllocationGridContentProps) {
+export function AllocationGridContent({
+  compact = false,
+  externalStartDate,
+  externalDaysVisible,
+  selectedDate: selectedDateProp,
+  onDateSelect,
+}: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
   const [internalStartDate, setInternalStartDate] = useState(() => startOfDay(new Date()));
   const startDate = externalStartDate || internalStartDate;
-  const setStartDate = externalStartDate ? () => {} : setInternalStartDate;
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [presetDays, setPresetDays] = useState<number | null>(null);
@@ -111,6 +117,16 @@ export function AllocationGridContent({ compact = false, externalStartDate, exte
   const clearPreset = () => {
     setPresetDays(null);
     setActivePreset(null);
+  };
+
+  const navigateToDate = (date: Date) => {
+    clearPreset();
+    const nextDate = startOfDay(date);
+    if (externalStartDate) {
+      onDateSelect?.(format(nextDate, "yyyy-MM-dd"));
+      return;
+    }
+    setInternalStartDate(nextDate);
   };
 
   const [allocDialogOpen, setAllocDialogOpen] = useState(false);
@@ -612,13 +628,13 @@ export function AllocationGridContent({ compact = false, externalStartDate, exte
               Export CSV
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(d => addDays(d, -7)); }} data-testid="button-grid-prev">
+          <Button variant="outline" size="sm" onClick={() => navigateToDate(addDays(startDate, -7))} data-testid="button-grid-prev">
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(startOfDay(new Date())); }} data-testid="button-grid-today">
+          <Button variant="outline" size="sm" onClick={() => navigateToDate(new Date())} data-testid="button-grid-today">
             Today
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { clearPreset(); setStartDate(d => addDays(d, 7)); }} data-testid="button-grid-next">
+          <Button variant="outline" size="sm" onClick={() => navigateToDate(addDays(startDate, 7))} data-testid="button-grid-next">
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
@@ -720,6 +736,7 @@ export function AllocationGridContent({ compact = false, externalStartDate, exte
                   const isToday = ds === today;
                   const isSelected = ds === selectedDateProp;
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const isInteractive = !!onDateSelect;
                   return (
                     <th
                       key={i}
@@ -728,8 +745,9 @@ export function AllocationGridContent({ compact = false, externalStartDate, exte
                         isToday ? "bg-primary/10 font-semibold text-primary" :
                         isWeekend ? "bg-muted/40 text-muted-foreground" :
                         "bg-background text-muted-foreground"
-                      }`}
+                      } ${isInteractive ? "cursor-pointer hover:bg-accent/50" : ""}`}
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                      onClick={() => onDateSelect?.(ds)}
                     >
                       <div className="text-[10px] leading-tight">{format(date, "EEE")}</div>
                       <div className="text-xs leading-tight">{format(date, "M/d")}</div>

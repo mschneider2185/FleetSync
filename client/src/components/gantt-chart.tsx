@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { AlertTriangle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Lane, FracJob, ScenarioFracSchedule } from "@shared/schema";
+import { getEffectiveScheduleStatus } from "@/lib/schedule-status";
 
 interface Conflict {
   type: string;
@@ -27,10 +28,11 @@ interface GanttChartProps {
   journalEvents?: JournalEvent[];
   onScheduleUpdate?: (scheduleId: number, newStartDate: string, newEndDate: string) => void;
   onFracClick?: (fracJobId: number) => void;
-  onDateSelect?: (dateStr: string) => void;
+  onDateSelect?: (dateStr: string | null) => void;
   onViewDateChange?: (dateStr: string) => void;
   onVisibleRangeChange?: (firstVisibleDate: string, numDays: number) => void;
   selectedDate?: string | null;
+  focusedDate?: string | null;
   isLocked?: boolean;
 }
 
@@ -66,9 +68,11 @@ export function GanttChart({
   onViewDateChange,
   onVisibleRangeChange,
   selectedDate,
+  focusedDate,
   isLocked,
 }: GanttChartProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastFocusedDateRef = useRef<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("month");
   const dayWidth = ZOOM_CONFIG[zoomLevel].dayWidth;
 
@@ -94,14 +98,6 @@ export function GanttChart({
 
   const today = startOfDay(new Date());
   const todayOffset = differenceInDays(today, dateRange.start);
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
-      }
-    });
-  }, [zoomLevel, dayWidth, todayOffset]);
 
   const dates = useMemo(() => {
     return Array.from({ length: dateRange.days }, (_, i) => addDays(dateRange.start, i));
@@ -194,6 +190,17 @@ export function GanttChart({
     return format(addDays(dateRange.start, Math.max(0, Math.min(dayIndex, dateRange.days - 1))), "yyyy-MM-dd");
   };
 
+  const scrollToDate = useCallback((dateStr: string, behavior: ScrollBehavior = "smooth") => {
+    if (!scrollRef.current) return;
+    const dayOffset = differenceInDays(parseISO(dateStr), dateRange.start);
+    if (dayOffset < 0 || dayOffset >= dateRange.days) return;
+    scrollRef.current.scrollTo({
+      left: dayOffset * dayWidth - scrollRef.current.clientWidth / 2,
+      behavior,
+    });
+    onViewDateChange?.(dateStr);
+  }, [dateRange, dayWidth, onViewDateChange]);
+
   const reportVisibleRange = useCallback(() => {
     if (!scrollRef.current || !onVisibleRangeChange) return;
     const el = scrollRef.current;
@@ -213,8 +220,31 @@ export function GanttChart({
     reportVisibleRange();
   }, [zoomLevel, reportVisibleRange]);
 
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (focusedDate) {
+        scrollToDate(focusedDate, "auto");
+      } else if (scrollRef.current) {
+        scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
+      }
+    });
+  }, [focusedDate, scrollToDate, todayOffset, dayWidth]);
+
+  useEffect(() => {
+    if (!focusedDate) {
+      lastFocusedDateRef.current = null;
+      return;
+    }
+    if (lastFocusedDateRef.current === focusedDate) return;
+    lastFocusedDateRef.current = focusedDate;
+    requestAnimationFrame(() => {
+      scrollToDate(focusedDate);
+    });
+  }, [focusedDate, scrollToDate]);
+
   const scrollBy = (days: number) => {
     if (!scrollRef.current) return;
+    onDateSelect?.(null);
     scrollRef.current.scrollBy({ left: days * dayWidth, behavior: "smooth" });
     setTimeout(() => {
       if (scrollRef.current && onViewDateChange) {
@@ -224,12 +254,8 @@ export function GanttChart({
   };
 
   const scrollToToday = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollLeft = todayOffset * dayWidth - scrollRef.current.clientWidth / 2;
-      if (onViewDateChange) {
-        onViewDateChange(format(new Date(), "yyyy-MM-dd"));
-      }
-    }
+    onDateSelect?.(null);
+    scrollToDate(format(new Date(), "yyyy-MM-dd"), "auto");
   };
 
   const getSchedulesByLane = (laneId: number) => {
@@ -477,6 +503,7 @@ export function GanttChart({
                   {laneSchedules.map(schedule => {
                     const frac = fracMap.get(schedule.fracJobId);
                     if (!frac) return null;
+                    const effectiveStatus = getEffectiveScheduleStatus(schedule);
 
                     const startOffset = differenceInDays(parseISO(schedule.plannedStartDate), dateRange.start);
                     const duration = differenceInDays(parseISO(schedule.plannedEndDate), parseISO(schedule.plannedStartDate)) + 1;
@@ -512,7 +539,7 @@ export function GanttChart({
                               isDragging && dragState.mode === "move" ? "shadow-lg cursor-grabbing z-20 opacity-90" :
                               isDragging ? "shadow-lg z-20 opacity-90" :
                               "hover:shadow-md z-5"
-                            } ${!isDragging && !isLocked ? "cursor-grab" : ""} ${STATUS_STYLES[schedule.status] || ""}`}
+                            } ${!isDragging && !isLocked ? "cursor-grab" : ""} ${STATUS_STYLES[effectiveStatus] || ""}`}
                             style={{
                               left,
                               width: Math.max(width, dayWidth > 10 ? 40 : 8),
@@ -580,7 +607,7 @@ export function GanttChart({
                           <div className="space-y-1">
                             <p className="font-medium">{frac.padName}</p>
                             <p className="text-xs text-muted-foreground">
-                              {frac.customer} &middot; {schedule.status}
+                              {frac.customer} &middot; {effectiveStatus}
                             </p>
                             <p className="text-xs">
                               {format(parseISO(schedule.plannedStartDate), "MMM d")} - {format(parseISO(schedule.plannedEndDate), "MMM d, yyyy")}
