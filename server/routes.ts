@@ -547,7 +547,8 @@ export async function registerRoutes(
   app.post("/api/allocations/bulk", isAuthenticated, async (req: any, res) => {
     try {
       const force = req.body.force === true;
-      const { force: _f, ...body } = req.body;
+      const setZero = req.body.setZero === true;
+      const { force: _f, setZero: _z, ...body } = req.body;
       const validated = validateBody(insertAllocationBlockSchema, body);
       if (!(await checkScenarioEditable(req, res, validated.scenarioId))) return;
 
@@ -586,8 +587,8 @@ export async function registerRoutes(
         }
       }
 
-      if (validated.trucksPerShift > 0) {
-        if (!force) {
+      if (validated.trucksPerShift > 0 || setZero) {
+        if (!force && validated.trucksPerShift > 0) {
           const capacityWarning = await checkHaulerCapacity(
             validated.scenarioId, validated.haulerId, validated.trucksPerShift,
             validated.startDate, validated.endDate

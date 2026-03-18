@@ -99,6 +99,7 @@ export const fracDailyEvents = pgTable("frac_daily_events", {
   date: text("date").notNull(),
   shift: text("shift").notNull().default("both"),
   category: text("category").notNull(),
+  subCategory: text("sub_category"),
   hoursLost: real("hours_lost"),
   notes: text("notes"),
   createdByUserId: varchar("created_by_user_id"),

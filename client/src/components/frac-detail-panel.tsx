@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Plus, Copy, Download, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { Trash2, Plus, Copy, Download, AlertTriangle, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FracCloneDialog } from "@/components/frac-clone-dialog";
@@ -47,16 +47,29 @@ interface TruckRecommendation {
   loadUnloadTime: number;
 }
 
-const EVENT_CATEGORIES = [
+const TOP_CATEGORIES = [
   { value: "NPT", label: "NPT" },
+  { value: "OTHER", label: "Other" },
+];
+
+const NPT_SUBCATEGORIES = [
   { value: "MECHANICAL", label: "Mechanical" },
   { value: "WEATHER", label: "Weather" },
   { value: "WATER_LIMITATION", label: "Water Limitation" },
   { value: "SAND_SUPPLY", label: "Sand Supply" },
   { value: "TRUCK_SHORTAGE", label: "Truck Shortage" },
-  { value: "SWA", label: "Stop Work Authority" },
-  { value: "OTHER", label: "Other" },
+  { value: "SWA", label: "SWA" },
 ];
+
+function getEventLabel(event: FracDailyEvent): string {
+  if (event.category === "NPT") {
+    const sub = NPT_SUBCATEGORIES.find(s => s.value === event.subCategory);
+    return sub ? `NPT — ${sub.label}` : "NPT";
+  }
+  if (event.category === "OTHER") return "Other";
+  const legacySub = NPT_SUBCATEGORIES.find(s => s.value === event.category);
+  return legacySub ? `NPT — ${legacySub.label}` : event.category;
+}
 
 function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null {
   if (!fracJob.stagesPerDay || !fracJob.tonsPerStage) return null;
@@ -81,7 +94,8 @@ function computeRecommendedTrucks(fracJob: FracJob): TruckRecommendation | null 
   };
 }
 
-function getCategoryColor(category: string): string {
+function getCategoryColor(category: string, subCategory?: string | null): string {
+  const colorKey = (category === "NPT" && subCategory) ? subCategory : category;
   const colors: Record<string, string> = {
     NPT: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
     MECHANICAL: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
@@ -92,7 +106,7 @@ function getCategoryColor(category: string): string {
     SWA: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
     OTHER: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400",
   };
-  return colors[category] || colors.OTHER;
+  return colors[colorKey] || colors.NPT;
 }
 
 export function FracDetailPanel({ open, onOpenChange, fracJob, schedule, allocations, haulers, scenarioId, conflicts = [] }: FracDetailPanelProps) {
@@ -597,8 +611,10 @@ function FracConflictsSection({ conflicts, fracJobId }: { conflicts: Conflict[];
 function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?: number }) {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<FracDailyEvent | null>(null);
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
-  const [newCategory, setNewCategory] = useState("");
+  const [newTopCategory, setNewTopCategory] = useState("");
+  const [newSubCategory, setNewSubCategory] = useState("");
   const [newHoursLost, setNewHoursLost] = useState("");
   const [newNotes, setNewNotes] = useState("");
 
@@ -613,12 +629,23 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     enabled: !!scenarioId,
   });
 
+  const resetForm = () => {
+    setShowAdd(false);
+    setEditingEvent(null);
+    setNewTopCategory("");
+    setNewSubCategory("");
+    setNewHoursLost("");
+    setNewNotes("");
+    setNewDate(new Date().toISOString().split("T")[0]);
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const body: any = {
         scenarioId,
         date: newDate,
-        category: newCategory,
+        category: newTopCategory,
+        subCategory: newTopCategory === "NPT" ? (newSubCategory || null) : null,
         notes: newNotes || undefined,
       };
       if (newHoursLost) body.hoursLost = parseFloat(newHoursLost);
@@ -627,11 +654,23 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
-      setShowAdd(false);
-      setNewCategory("");
-      setNewHoursLost("");
-      setNewNotes("");
+      resetForm();
       toast({ title: "Journal entry added" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: any }) => {
+      const res = await apiRequest("PATCH", `/api/events/${id}`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      resetForm();
+      toast({ title: "Journal entry updated" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -648,6 +687,40 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     },
   });
 
+  const handleEdit = (event: FracDailyEvent) => {
+    setEditingEvent(event);
+    setShowAdd(true);
+    setNewDate(event.date);
+    if (event.category === "NPT") {
+      setNewTopCategory("NPT");
+      setNewSubCategory(event.subCategory || "");
+    } else if (event.category === "OTHER") {
+      setNewTopCategory("OTHER");
+      setNewSubCategory("");
+    } else {
+      setNewTopCategory("NPT");
+      setNewSubCategory(event.category);
+    }
+    setNewHoursLost(event.hoursLost ? event.hoursLost.toString() : "");
+    setNewNotes(event.notes || "");
+  };
+
+  const handleSubmit = () => {
+    const body: any = {
+      date: newDate,
+      category: newTopCategory,
+      subCategory: newTopCategory === "NPT" ? (newSubCategory || null) : null,
+      notes: newNotes || undefined,
+    };
+    if (newHoursLost) body.hoursLost = parseFloat(newHoursLost);
+    if (editingEvent) {
+      updateMutation.mutate({ id: editingEvent.id, body });
+    } else {
+      body.scenarioId = scenarioId;
+      createMutation.mutate();
+    }
+  };
+
   if (!scenarioId) {
     return (
       <div className="text-sm text-muted-foreground text-center py-8">
@@ -657,6 +730,7 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
   }
 
   const sortedEvents = [...events].sort((a, b) => b.date.localeCompare(a.date));
+  const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
     <div className="space-y-3">
@@ -666,7 +740,14 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
           variant="outline"
           size="sm"
           className="gap-1"
-          onClick={() => setShowAdd(!showAdd)}
+          onClick={() => {
+            if (showAdd && !editingEvent) {
+              resetForm();
+            } else {
+              setEditingEvent(null);
+              setShowAdd(true);
+            }
+          }}
           data-testid="button-add-journal"
         >
           <Plus className="w-3 h-3" />
@@ -676,6 +757,9 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
 
       {showAdd && (
         <div className="rounded-md border p-3 space-y-3">
+          {editingEvent && (
+            <p className="text-xs font-medium text-muted-foreground">Editing entry from {format(parseISO(editingEvent.date), "MMM d, yyyy")}</p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <p className="text-xs text-muted-foreground mb-1">Date</p>
@@ -688,18 +772,33 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
             </div>
             <div>
               <p className="text-xs text-muted-foreground mb-1">Category</p>
-              <Select value={newCategory} onValueChange={setNewCategory}>
+              <Select value={newTopCategory} onValueChange={(v) => { setNewTopCategory(v); setNewSubCategory(""); }}>
                 <SelectTrigger data-testid="select-journal-category">
                   <SelectValue placeholder="Select..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {EVENT_CATEGORIES.map(c => (
+                  {TOP_CATEGORIES.map(c => (
                     <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
+          {newTopCategory === "NPT" && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">NPT Type (optional)</p>
+              <Select value={newSubCategory} onValueChange={setNewSubCategory}>
+                <SelectTrigger data-testid="select-journal-subcategory">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {NPT_SUBCATEGORIES.map(c => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <p className="text-xs text-muted-foreground mb-1">Hours Lost (optional)</p>
             <Input
@@ -724,13 +823,13 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
           <div className="flex gap-2">
             <Button
               size="sm"
-              onClick={() => createMutation.mutate()}
-              disabled={!newCategory || !newDate || createMutation.isPending}
+              onClick={handleSubmit}
+              disabled={!newTopCategory || !newDate || isSaving}
               data-testid="button-save-journal"
             >
-              {createMutation.isPending ? "Saving..." : "Save"}
+              {isSaving ? "Saving..." : editingEvent ? "Update" : "Save"}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowAdd(false)}>
+            <Button size="sm" variant="outline" onClick={resetForm} data-testid="button-cancel-journal">
               Cancel
             </Button>
           </div>
@@ -748,26 +847,37 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
       {sortedEvents.map(event => (
         <div key={event.id} className="rounded-md border p-3 space-y-1" data-testid={`journal-entry-${event.id}`}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-mono text-muted-foreground">
                 {format(parseISO(event.date), "MMM d")}
               </span>
-              <span className={`text-xs px-1.5 py-0.5 rounded ${getCategoryColor(event.category)}`}>
-                {EVENT_CATEGORIES.find(c => c.value === event.category)?.label || event.category}
+              <span className={`text-xs px-1.5 py-0.5 rounded ${getCategoryColor(event.category, event.subCategory)}`}>
+                {getEventLabel(event)}
               </span>
               {event.hoursLost && (
                 <span className="text-xs text-muted-foreground">{event.hoursLost}h lost</span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => deleteMutation.mutate(event.id)}
-              data-testid={`button-delete-journal-${event.id}`}
-            >
-              <Trash2 className="w-3 h-3" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                onClick={() => handleEdit(event)}
+                data-testid={`button-edit-journal-${event.id}`}
+              >
+                <Pencil className="w-3 h-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => deleteMutation.mutate(event.id)}
+                data-testid={`button-delete-journal-${event.id}`}
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
           </div>
           {event.notes && (
             <p className="text-xs text-muted-foreground">{event.notes}</p>

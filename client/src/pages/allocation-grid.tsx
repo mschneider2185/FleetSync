@@ -305,18 +305,15 @@ export function AllocationGridContent({
         });
       }
 
-      if (newValue > 0) {
-        const editedPayload = {
-          scenarioId: alloc.scenarioId,
-          fracJobId: alloc.fracJobId,
-          haulerId: alloc.haulerId,
-          startDate: dateStr,
-          endDate: dateStr,
-          trucksPerShift: newValue,
-          force: true,
-        };
-        await apiRequest("POST", "/api/allocations", editedPayload);
-      }
+      await apiRequest("POST", "/api/allocations", {
+        scenarioId: alloc.scenarioId,
+        fracJobId: alloc.fracJobId,
+        haulerId: alloc.haulerId,
+        startDate: dateStr,
+        endDate: dateStr,
+        trucksPerShift: newValue,
+        force: true,
+      });
 
       if (alloc.endDate > dateStr) {
         await apiRequest("POST", "/api/allocations", {
@@ -337,7 +334,7 @@ export function AllocationGridContent({
   });
 
   const bulkAllocMutation = useMutation({
-    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean }) => {
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean; setZero?: boolean }) => {
       return allocRequest("POST", "/api/allocations/bulk", payload, () => {
         bulkAllocMutation.mutate({ ...payload, force: true });
       });
@@ -365,7 +362,7 @@ export function AllocationGridContent({
       allocId: alloc?.id || null,
       originalValue: currentValue,
     });
-    setEditValue(currentValue > 0 ? currentValue.toString() : "");
+    setEditValue(alloc ? currentValue.toString() : "");
   };
 
   const cancelEditing = () => {
@@ -395,12 +392,10 @@ export function AllocationGridContent({
         const alloc = allocations.find(a => a.id === cell.allocId);
         if (alloc && (alloc.startDate < cell.dateStr || alloc.endDate > cell.dateStr)) {
           splitAndEditMutation.mutate({ alloc, dateStr: cell.dateStr, newValue }, { onSettled: resetGuard });
-        } else if (newValue === 0) {
-          deleteAllocMutation.mutate(cell.allocId, { onSettled: resetGuard });
         } else {
           updateAllocMutation.mutate({ allocId: cell.allocId, trucksPerShift: newValue }, { onSettled: resetGuard });
         }
-      } else if (newValue > 0) {
+      } else if (editValue !== "") {
         createAllocMutation.mutate({
           fracJobId: cell.fracJobId,
           haulerId: cell.haulerId,
@@ -415,7 +410,7 @@ export function AllocationGridContent({
     } catch {
       resetGuard();
     }
-  }, [editingCell, editValue, activeScenarioId, allocations, splitAndEditMutation, deleteAllocMutation, updateAllocMutation, createAllocMutation]);
+  }, [editingCell, editValue, activeScenarioId, allocations, splitAndEditMutation, updateAllocMutation, createAllocMutation]);
 
   useEffect(() => {
     if (editingCell && editInputRef.current) {
@@ -469,8 +464,8 @@ export function AllocationGridContent({
 
   const applyBulkEdit = () => {
     if (!rangeSelection || !activeScenarioId) return;
+    if (bulkValue === "") return;
     const value = parseInt(bulkValue) || 0;
-    if (value <= 0) return;
     bulkAllocMutation.mutate({
       fracJobId: rangeSelection.fracJobId,
       haulerId: rangeSelection.haulerId,
@@ -478,6 +473,7 @@ export function AllocationGridContent({
       endDate: rangeSelection.endDateStr,
       trucksPerShift: value,
       scenarioId: activeScenarioId,
+      ...(value === 0 ? { setZero: true } : {}),
     });
   };
 
@@ -530,6 +526,7 @@ export function AllocationGridContent({
       endDate: end,
       trucksPerShift: dragFill.sourceValue,
       scenarioId: activeScenarioId,
+      ...(dragFill.sourceValue === 0 ? { setZero: true } : {}),
     });
   }, [dragFill, activeScenarioId, bulkAllocMutation]);
 
@@ -867,7 +864,8 @@ export function AllocationGridContent({
                               />
                             );
                           }
-                          const trucks = getTrucksForDay(schedule.fracJobId, haulerId, ds);
+                          const cellAlloc = getAllocForDay(schedule.fracJobId, haulerId, ds);
+                          const trucks = cellAlloc !== null ? cellAlloc.trucksPerShift : null;
                           const isEditing = editingCell?.fracJobId === schedule.fracJobId &&
                             editingCell?.haulerId === haulerId &&
                             editingCell?.dateStr === ds;
@@ -927,8 +925,8 @@ export function AllocationGridContent({
                               onMouseEnter={() => handleDragMove(schedule.fracJobId, haulerId, ds)}
                               data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}`}
                             >
-                              {trucks > 0 ? trucks : ""}
-                              {trucks > 0 && !isDraggingRef.current && (
+                              {trucks !== null ? trucks : ""}
+                              {trucks !== null && !isDraggingRef.current && (
                                 <div
                                   className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-4 bg-primary/60 hover:bg-primary cursor-crosshair rounded-sm opacity-0 group-hover/hauler-row:opacity-100 transition-opacity"
                                   onMouseDown={(e) => handleDragStart(schedule.fracJobId, haulerId, ds, trucks, e)}
