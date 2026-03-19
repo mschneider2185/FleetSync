@@ -11,6 +11,12 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - **Routing**: Wouter (client-side), Express (server-side)
 - **State**: TanStack React Query for data fetching
 
+## Database Environments
+- **Development**: Replit-provisioned PostgreSQL (`DATABASE_URL` env var, host `helium`)
+- **Production**: Neon PostgreSQL (`NEON_DATABASE_URL` secret — connection string to `ep-shiny-darkness-ajiif9x9.c-3.us-east-2.aws.neon.tech/neondb`)
+- To sync dev → production: `pg_dump $DATABASE_URL | psql $NEON_DATABASE_URL`
+- Database data and credentials are never committed to GitHub; only schema definitions in `shared/schema.ts` are version-controlled
+
 ## Data Model
 - **Lanes**: Fleet lanes (e.g., EVO1, EVO10) that group sequential frac jobs
 - **FracJobs**: Individual frac operations with sand plan details (stages/day, tons/stage, travel time, storage)
@@ -20,14 +26,21 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - **HaulerCapacityExceptions**: Day-specific hauler capacity overrides
 - **AllocationBlocks**: Hauler-to-frac truck assignments by date range and scenario
 - **Presets**: Reusable configurations (storage or sand_design type) with JSON data, system flag
-- **FracDailyEvents**: Daily journal entries per frac+scenario with category (NPT, MECHANICAL, WEATHER, etc.), hours lost, notes
+- **FracDailyEvents**: Daily journal entries per frac+scenario with category (NPT, MECHANICAL, WEATHER, etc.), sub_category, hours lost, notes
 
 ## Key Features (MVP)
 - Interactive Gantt chart with drag-and-drop frac scheduling by lane, zoom controls (Week/Month/Quarter/Year) with auto-scroll to today on zoom change, visible horizontal scrollbar, and amber dot indicators for days with journal entries (fetched via `GET /api/scenarios/:id/events`)
+- Gantt month header bands in Quarter/Year view are clickable — click position within the band resolves to the exact day, triggering a date selection highlight in the chart and syncing the allocation grid below
+- Gantt "Lanes" sticky label column uses `bg-background` for a fully opaque cutoff when scrolling horizontally
 - Daily allocation grid (Excel-like) with dynamic column count (auto-fills available width via ResizeObserver), sticky headers, and inline cell editing
+- Allocation grid sticky "Frac / Hauler" label column uses solid `bg-muted` background so scrolled content doesn't bleed through
+- Allocation grid frac job rows sorted by status: Active → Planned → Paused → Complete (active work always appears first)
 - Combined dashboard view: Gantt chart and allocation grid on the same page with draggable splitter (20-80% range), collapsible sections (chevron toggles), Gantt→Grid timeframe sync (scroll/zoom Gantt updates grid's visible date range and column count), and clickable date column highlighting
 - Inline cell editing in allocation grid: double-click any cell to edit truck count (Enter/Tab commits, click-away cancels), with automatic block splitting for multi-day allocations and ref-guarded save to prevent double-fire
 - Bulk editing in allocation grid: (1) click to select a cell, Shift+click to extend range, then use bulk toolbar to apply a value or clear the range; (2) drag-to-fill handle on right edge of valued cells to copy value across adjacent dates; (3) pencil edit button on hover of hauler row labels opens pre-filled AllocationDialog for editing entire blocks
+- Delete hauler from allocation grid: trash icon appears on hover next to the pencil icon; clicking shows a confirmation AlertDialog, then removes all allocation blocks for that hauler+frac combination in the active scenario
+- Allocation dialog (add/edit) auto-fills Start Date and End Date from the selected frac job's planned schedule dates; dates update reactively when the frac job dropdown changes
+- Three allocation grid footer rows: (1) **Hauler Totals** — sum of all hauler trucks per day; (2) **Frac Needs Total** — required trucks per day, red-highlighted on shortfall; (3) **Hauler Surplus** — signed daily delta (green +N surplus / red −N shortfall / neutral 0)
 - Scenario management (Actual/Sandbox) with sandbox creation (copy-from-parent or blank canvas "Start from scratch") and role-based access (planner vs viewer)
 - Lane cascading: extending a frac's end date auto-pushes downstream fracs in the same lane
 - Frac job builder with sand plan details (including configurable load+unload time)
@@ -36,7 +49,6 @@ A web-based planning tool to visualize and manage sand-hauling fleet allocations
 - Dismissible conflict entries: per-entity and per-type dismiss/restore with "show dismissed" toggle in conflict sheet
 - Frac detail panel with sand info, demand calculations (uses floor for loads/truck/shift), hauler assignments, daily journal with collapsible frac-specific conflicts section (Issues & Warnings with collapsed date ranges), and per-frac CSV report export button
 - Preset library: system presets for storage type and sand design, applied via dropdowns in frac job dialog
-- Frac Needs Total footer row in allocation grid: sums required trucks across active/planned/complete schedules per day, highlights shortfalls in red; defensively filters out orphaned schedules
 - Sand plan import supports both CSV and Excel (.xlsx/.xls) files with auto-detection; uses `xlsx` (SheetJS) package for Excel parsing with same header synonym mapping
 - CSV export includes Hauler Totals and Frac Needs Total summary rows at the bottom of the grid data
 - Frac-level cloning: Clone button on frac cards and detail panel, pre-fills all frac data with "(Copy)" suffix, includes schedule fields for immediate scheduling
@@ -59,7 +71,7 @@ client/src/
     scenario-selector.tsx      # Scenario dropdown + sandbox creation
     frac-job-dialog.tsx        # Create/edit frac job form (with useEffect reset)
     hauler-dialog.tsx          # Create/edit hauler form (with useEffect reset)
-    allocation-dialog.tsx      # Create/edit allocation form
+    allocation-dialog.tsx      # Create/edit allocation form (dates auto-filled from frac schedule)
     frac-detail-panel.tsx      # Side panel with frac details + demand breakdown + truck overrides
     frac-clone-dialog.tsx      # Clone frac dialog with pre-filled data + schedule fields
     lane-dialog.tsx            # Create/edit lane (name, color, sort order)
@@ -93,6 +105,7 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `GET /api/login` - Begin login flow
 - `GET /api/logout` - Logout
 - `GET /api/auth/user` - Get current user
+- `GET /api/auth/role` - Returns `{ isPlanner: boolean }`
 
 ### CRUD
 - `/api/lanes` - GET, POST; `/api/lanes/:id` - PATCH, DELETE
@@ -106,12 +119,14 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - `/api/capacity-exceptions` - POST; `/api/capacity-exceptions/:id` - DELETE
 - `/api/scenarios/:scenarioId/allocations` - GET
 - `/api/allocations` - POST; `/api/allocations/bulk` - POST (range replace with split-preservation); `/api/allocations/:id` - PATCH, DELETE
+- `/api/allocations/hauler` - DELETE (removes all blocks for a hauler+frac combo in a scenario; body: `{ scenarioId, fracJobId, haulerId }`)
 - `/api/scenarios/:scenarioId/conflicts` - GET (computed conflict detection with detailed explanations)
 - `/api/scenarios/:scenarioId/export` - GET (CSV export of allocation grid)
+- `/api/frac-jobs/:id/report` - GET (?scenarioId= — per-frac CSV report)
 - `/api/presets` - GET (?type= filter), POST, DELETE /:id (planner only)
 - `/api/frac-jobs/:id/events` - GET (?scenarioId=), POST
 - `/api/events/:id` - PATCH, DELETE
-- `/api/auth/role` - GET (returns { isPlanner: boolean })
+- `/api/scenarios/:id/events` - GET (all events for scenario; used by Gantt dot indicators)
 
 ## Sandbox Isolation
 - Frac jobs are global entities shared across scenarios; schedules/allocations are per-scenario
@@ -123,9 +138,11 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - Configured for autoscale deployment with `npm run build` + `npm run start` (NODE_ENV=production)
 - In production, `cleanupScenarios()` in seed.ts is skipped to prevent destructive dev-only cleanup
 - `seedPresets()` and `cleanupOrphanedData()` run in all environments (safe/idempotent)
+- Production database is Neon PostgreSQL; `NEON_DATABASE_URL` must be set in Replit Secrets
 
-## Capacity Hard-Stop
-- Allocation POST/PATCH validates hauler capacity: if saving would exceed `defaultMaxTrucksPerShift` (or date-specific exceptions), returns 409
+## Capacity Warning (not Hard-Stop)
+- Allocation POST/PATCH validates hauler capacity: if saving would exceed `defaultMaxTrucksPerShift` (or date-specific exceptions), returns 422 with `{ requiresConfirmation: true }`
+- User is prompted with AlertDialog to accept or cancel; passing `force: true` in the request body bypasses the check
 - Frac over/under supply detected in conflict engine but does not block saves
 
 ## CSV Export
@@ -138,6 +155,9 @@ All routes are prefixed with `/api` and require authentication (except auth rout
 - Drag entire bar to move schedule start+end together
 - Drag left/right edge to resize schedule (change start or end date independently)
 - Resize handles visible on hover, respects locked scenario
+- Month header bands in Quarter/Year view are clickable for day-level date selection
+- Selected date shown as column highlight in Quarter view (and week/month views)
+- Lanes sticky label column is fully opaque (`bg-background`) to prevent scroll bleed
 
 ## Conflict Engine
 - Conflicts include detailed math: per-hauler breakdowns, per-frac assignments, shortage/overage numbers
