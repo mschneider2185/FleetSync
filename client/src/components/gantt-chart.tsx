@@ -431,8 +431,17 @@ export function GanttChart({
                 {monthHeaders.map((mh, i) => (
                   <div
                     key={i}
-                    className="flex items-end justify-center pb-2 border-r text-[10px] font-medium text-muted-foreground"
+                    className="flex items-end justify-center pb-2 border-r text-[10px] font-medium text-muted-foreground cursor-pointer hover:bg-muted/30 transition-colors select-none"
                     style={{ width: mh.span * dayWidth, minWidth: mh.span * dayWidth }}
+                    onClick={(e) => {
+                      if (!onDateSelect) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = e.clientX - rect.left;
+                      const dayIndex = Math.max(0, Math.min(Math.floor(x / dayWidth), mh.span - 1));
+                      const clickedDate = format(addDays(dateRange.start, mh.startIdx + dayIndex), "yyyy-MM-dd");
+                      onDateSelect(clickedDate);
+                    }}
+                    title={zoomLevel === "year" ? "Click to select a day" : undefined}
                   >
                     <span className="truncate px-1">{mh.label}</span>
                   </div>
@@ -450,7 +459,7 @@ export function GanttChart({
                 style={{ height: ROW_HEIGHT }}
               >
                 <div
-                  className="sticky left-0 z-10 bg-inherit border-r flex items-center gap-2 px-3"
+                  className="sticky left-0 z-10 bg-background border-r flex items-center gap-2 px-3"
                   style={{ width: LANE_HEADER_WIDTH, minWidth: LANE_HEADER_WIDTH }}
                 >
                   <span
@@ -487,13 +496,13 @@ export function GanttChart({
                     />
                   )}
 
-                  {selectedDate && showDayLabels && (() => {
+                  {selectedDate && zoomLevel !== "year" && (() => {
                     const selOffset = differenceInDays(parseISO(selectedDate), dateRange.start);
                     if (selOffset >= 0 && selOffset < dateRange.days) {
                       return (
                         <div
                           className="absolute top-0 bottom-0 bg-primary/8 z-0 border-l border-r border-primary/20"
-                          style={{ left: selOffset * dayWidth, width: dayWidth }}
+                          style={{ left: selOffset * dayWidth, width: Math.max(dayWidth, 2) }}
                         />
                       );
                     }

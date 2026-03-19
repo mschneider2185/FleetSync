@@ -21,6 +21,7 @@ import { getEffectiveTrucksForDate } from "@shared/schema";
 const COL_WIDTH = 56;
 const LABEL_WIDTH = 220;
 const DEFAULT_DAYS_VISIBLE = 21;
+const STATUS_SORT_ORDER: Record<string, number> = { active: 0, planned: 1, paused: 2, complete: 3 };
 
 interface EditingCell {
   fracJobId: number;
@@ -133,6 +134,7 @@ export function AllocationGridContent({
   const [allocDialogFrac, setAllocDialogFrac] = useState<number | undefined>();
   const [allocDialogHauler, setAllocDialogHauler] = useState<number | undefined>();
   const [allocDialogEdit, setAllocDialogEdit] = useState<AllocationBlock | null>(null);
+  const [haulerToDelete, setHaulerToDelete] = useState<{ fracJobId: number; haulerId: number } | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -190,7 +192,9 @@ export function AllocationGridContent({
   const activeSchedules = useMemo(() => {
     const endDateStr = format(addDays(startDate, daysVisible), "yyyy-MM-dd");
     const startDateStr = format(startDate, "yyyy-MM-dd");
-    return validSchedules.filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr);
+    return validSchedules
+      .filter(s => s.plannedEndDate >= startDateStr && s.plannedStartDate <= endDateStr)
+      .sort((a, b) => (STATUS_SORT_ORDER[a.status ?? "planned"] ?? 99) - (STATUS_SORT_ORDER[b.status ?? "planned"] ?? 99));
   }, [validSchedules, startDate, daysVisible]);
 
   const getAllocForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
@@ -283,6 +287,22 @@ export function AllocationGridContent({
     onSettled: refreshAllocations,
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message || "Failed to delete allocation", variant: "destructive" });
+    },
+  });
+
+  const deleteHaulerFromFracMutation = useMutation({
+    mutationFn: async ({ fracJobId, haulerId }: { fracJobId: number; haulerId: number }) => {
+      const toDelete = allocations.filter(a => a.fracJobId === fracJobId && a.haulerId === haulerId);
+      for (const alloc of toDelete) {
+        await apiRequest("DELETE", `/api/allocations/${alloc.id}`);
+      }
+    },
+    onSettled: refreshAllocations,
+    onSuccess: () => {
+      toast({ title: "Hauler removed from frac job" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to remove hauler", variant: "destructive" });
     },
   });
 
@@ -765,7 +785,7 @@ export function AllocationGridContent({
                 <tbody key={schedule.id}>
                   <tr className="bg-muted/40">
                     <td
-                      className="sticky left-0 z-10 bg-muted/40 border-b border-r px-3 py-2"
+                      className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-2"
                       style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -846,6 +866,15 @@ export function AllocationGridContent({
                                 data-testid={`button-edit-hauler-${schedule.fracJobId}-${haulerId}`}
                               >
                                 <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover/hauler-row:opacity-100 transition-opacity shrink-0 text-destructive hover:text-destructive"
+                                onClick={() => setHaulerToDelete({ fracJobId: schedule.fracJobId, haulerId })}
+                                data-testid={`button-delete-hauler-${schedule.fracJobId}-${haulerId}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
                               </Button>
                               <span className="text-[10px] text-muted-foreground shrink-0 ml-1">
                                 max {hauler.defaultMaxTrucksPerShift}
@@ -946,7 +975,7 @@ export function AllocationGridContent({
             <tbody>
               <tr className="bg-muted/30">
                 <td
-                  className="sticky left-0 z-10 bg-muted/30 border-b border-r px-3 py-2 font-semibold text-sm"
+                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-2 font-semibold text-sm"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-totals"
                 >
@@ -956,31 +985,21 @@ export function AllocationGridContent({
                   const totalAllDay = allocations
                     .filter(a => a.startDate <= ds && a.endDate >= ds)
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const fracNeedsTotal = validSchedules
-                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                  const shortfall = fracNeedsTotal > 0 && totalAllDay < fracNeedsTotal;
-                  const delta = totalAllDay - fracNeedsTotal;
                   return (
                     <td
                       key={i}
-                      className={`border-b border-r text-center font-semibold py-2 ${shortfall ? "bg-red-100 dark:bg-red-900/30" : ""}`}
+                      className="border-b border-r text-center font-semibold py-2"
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-total-${ds}`}
                     >
-                      <div className="leading-tight">{totalAllDay > 0 ? totalAllDay : ""}</div>
-                      {shortfall && totalAllDay > 0 && (
-                        <div className="text-[9px] font-normal leading-tight text-red-600 dark:text-red-400" data-testid={`cell-shortfall-${ds}`}>
-                          {delta}
-                        </div>
-                      )}
+                      {totalAllDay > 0 ? totalAllDay : ""}
                     </td>
                   );
                 })}
               </tr>
               <tr className="bg-muted/20">
                 <td
-                  className="sticky left-0 z-10 bg-muted/20 border-b border-r px-3 py-2 font-semibold text-sm text-muted-foreground"
+                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-2 font-semibold text-sm text-muted-foreground"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-frac-needs-total"
                 >
@@ -998,6 +1017,39 @@ export function AllocationGridContent({
                       data-testid={`cell-frac-needs-${ds}`}
                     >
                       {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
+                    </td>
+                  );
+                })}
+              </tr>
+              <tr className="bg-muted/10">
+                <td
+                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-3 py-2 font-semibold text-sm"
+                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                  data-testid="text-hauler-surplus"
+                >
+                  Hauler Surplus
+                </td>
+                {dateStrings.map((ds, i) => {
+                  const totalAllDay = allocations
+                    .filter(a => a.startDate <= ds && a.endDate >= ds)
+                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
+                  const fracNeedsTotal = validSchedules
+                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+                  const surplus = totalAllDay - fracNeedsTotal;
+                  const hasFracActivity = fracNeedsTotal > 0;
+                  return (
+                    <td
+                      key={i}
+                      className={`border-t-2 border-t-border border-b border-r text-center font-semibold py-2 ${
+                        hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                        hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                        "text-muted-foreground"
+                      }`}
+                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                      data-testid={`cell-surplus-${ds}`}
+                    >
+                      {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
                     </td>
                   );
                 })}
@@ -1086,6 +1138,34 @@ export function AllocationGridContent({
               }}
             >
               Accept Over-Capacity
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!haulerToDelete} onOpenChange={(open) => { if (!open) setHaulerToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Hauler from Frac Job?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all allocation blocks for{" "}
+              <strong>{haulerToDelete ? haulerMap.get(haulerToDelete.haulerId)?.name : ""}</strong> on this frac job.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-hauler">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-delete-hauler"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (haulerToDelete) {
+                  deleteHaulerFromFracMutation.mutate(haulerToDelete);
+                  setHaulerToDelete(null);
+                }
+              }}
+            >
+              Remove Hauler
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

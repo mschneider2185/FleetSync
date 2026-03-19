@@ -22,7 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { AlertTriangle } from "lucide-react";
-import type { FracJob, Hauler, AllocationBlock } from "@shared/schema";
+import type { FracJob, Hauler, AllocationBlock, ScenarioFracSchedule } from "@shared/schema";
 
 const formSchema = z.object({
   fracJobId: z.coerce.number().min(1, "Select a frac job"),
@@ -47,10 +47,24 @@ export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFr
   const { activeScenarioId } = useScenario();
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
   const { data: haulers = [] } = useQuery<Hauler[]>({ queryKey: ["/api/haulers"] });
+  const { data: schedules = [] } = useQuery<ScenarioFracSchedule[]>({
+    queryKey: ["/api/scenarios", activeScenarioId, "schedules"],
+    queryFn: async () => {
+      if (!activeScenarioId) return [];
+      const res = await fetch(`/api/scenarios/${activeScenarioId}/schedules`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!activeScenarioId,
+  });
   const [capacityWarning, setCapacityWarning] = useState<{
     message: string;
     action: () => void;
   } | null>(null);
+
+  const getScheduleDates = (fracJobId: number) => {
+    const schedule = schedules.find(s => s.fracJobId === fracJobId);
+    return schedule ? { startDate: schedule.plannedStartDate, endDate: schedule.plannedEndDate } : null;
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -65,15 +79,40 @@ export function AllocationDialog({ open, onOpenChange, editAllocation, defaultFr
 
   useEffect(() => {
     if (open) {
+      const fracId = editAllocation?.fracJobId || defaultFracJobId || 0;
+      let startDate = editAllocation?.startDate || "";
+      let endDate = editAllocation?.endDate || "";
+
+      if (!editAllocation && fracId) {
+        const dates = getScheduleDates(fracId);
+        if (dates) {
+          startDate = dates.startDate;
+          endDate = dates.endDate;
+        }
+      }
+
       form.reset({
-        fracJobId: editAllocation?.fracJobId || defaultFracJobId || 0,
+        fracJobId: fracId,
         haulerId: editAllocation?.haulerId || defaultHaulerId || 0,
-        startDate: editAllocation?.startDate || "",
-        endDate: editAllocation?.endDate || "",
+        startDate,
+        endDate,
         trucksPerShift: editAllocation?.trucksPerShift || 1,
       });
     }
-  }, [open, editAllocation, defaultFracJobId, defaultHaulerId]);
+  }, [open, editAllocation, defaultFracJobId, defaultHaulerId, schedules]);
+
+  const watchedFracJobId = form.watch("fracJobId");
+
+  useEffect(() => {
+    if (!open || editAllocation) return;
+    const fracId = Number(watchedFracJobId);
+    if (!fracId) return;
+    const dates = getScheduleDates(fracId);
+    if (dates) {
+      form.setValue("startDate", dates.startDate);
+      form.setValue("endDate", dates.endDate);
+    }
+  }, [watchedFracJobId]);
 
   const submitAllocation = async (values: FormValues, force?: boolean) => {
     const payload = { ...values, scenarioId: activeScenarioId, force };
