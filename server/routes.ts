@@ -464,7 +464,7 @@ export async function registerRoutes(
       const ds = d.toISOString().split("T")[0];
       const exception = exceptions.find(e => e.date === ds);
       const cap = exception ? (exception.maxTrucksPerShift ?? maxCap) : maxCap;
-      if (!cap) { d.setDate(d.getDate() + 1); continue; }
+      if (cap == null) { d.setDate(d.getDate() + 1); continue; }
 
       const shiftsToCheck: ("day" | "night")[] = effectiveShift === "both" ? ["day", "night"] : [effectiveShift];
 
