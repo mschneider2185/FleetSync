@@ -654,6 +654,7 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      if (scenarioId) queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "events"] });
       resetForm();
       toast({ title: "Journal entry added" });
     },
@@ -669,6 +670,7 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      if (scenarioId) queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "events"] });
       resetForm();
       toast({ title: "Journal entry updated" });
     },
@@ -683,6 +685,7 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/frac-jobs", fracJobId, "events", scenarioId] });
+      if (scenarioId) queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "events"] });
       toast({ title: "Journal entry deleted" });
     },
   });
