@@ -735,8 +735,41 @@ function JournalTab({ fracJobId, scenarioId }: { fracJobId: number; scenarioId?:
   const sortedEvents = [...events].sort((a, b) => b.date.localeCompare(a.date));
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  const nptEvents = events.filter(e => e.category === "NPT" || NPT_SUBCATEGORIES.some(s => s.value === e.category));
+  const totalNptHours = nptEvents.reduce((sum, e) => sum + (e.hoursLost || 0), 0);
+  const nptBySubcategory = NPT_SUBCATEGORIES.map(sub => {
+    const subEvents = nptEvents.filter(e =>
+      e.subCategory === sub.value || e.category === sub.value
+    );
+    const hours = subEvents.reduce((sum, e) => sum + (e.hoursLost || 0), 0);
+    return { label: sub.label, value: sub.value, hours, count: subEvents.length };
+  }).filter(s => s.count > 0);
+
   return (
     <div className="space-y-3">
+      {nptEvents.length > 0 && (
+        <div className="rounded-md border bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/40 p-3 space-y-2" data-testid="npt-summary">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-red-700 dark:text-red-400">NPT Summary</span>
+            <span className="text-xs text-red-600 dark:text-red-400 font-mono" data-testid="npt-total-hours">
+              {`${totalNptHours.toFixed(2)}h total`}
+            </span>
+          </div>
+          {nptBySubcategory.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {nptBySubcategory.map(sub => (
+                <span
+                  key={sub.value}
+                  className={`text-xs px-2 py-0.5 rounded ${getCategoryColor("NPT", sub.value)}`}
+                  data-testid={`npt-subcategory-${sub.value}`}
+                >
+                  {sub.label}: {sub.hours.toFixed(2)}h
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">Daily Log ({events.length})</p>
         <Button

@@ -1066,6 +1066,13 @@ export function AllocationGridContent({
               );
             })}
 
+          </table>
+        </div>
+      )}
+
+      {isStandalone && activeSchedules.length > 0 && (
+        <div className="shrink-0 overflow-x-auto border-t bg-muted/20" data-testid="totals-strip">
+          <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
             <tbody>
               <tr className="bg-muted/30">
                 <td
@@ -1295,6 +1302,41 @@ export function AllocationGridContent({
       </AlertDialog>
     </div>
   );
+}
+
+export function useAllocationTotalsData(startDate: Date, daysVisible: number) {
+  const { activeScenarioId } = useScenario();
+  const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
+  const fracJobIds = useMemo(() => new Set(fracJobs.map(f => f.id)), [fracJobs]);
+
+  const { data: schedules = [] } = useQuery<ScenarioFracSchedule[]>({
+    queryKey: ["/api/scenarios", activeScenarioId, "schedules"],
+    queryFn: async () => {
+      if (!activeScenarioId) return [];
+      const res = await fetch(`/api/scenarios/${activeScenarioId}/schedules`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!activeScenarioId,
+  });
+
+  const { data: allocations = [] } = useQuery<AllocationBlock[]>({
+    queryKey: ["/api/scenarios", activeScenarioId, "allocations"],
+    queryFn: async () => {
+      if (!activeScenarioId) return [];
+      const res = await fetch(`/api/scenarios/${activeScenarioId}/allocations`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!activeScenarioId,
+  });
+
+  const validSchedules = useMemo(() => schedules.filter(s => fracJobIds.has(s.fracJobId)), [schedules, fracJobIds]);
+
+  const dateStrings = useMemo(() =>
+    Array.from({ length: daysVisible }, (_, i) => format(addDays(startDate, i), "yyyy-MM-dd")),
+    [startDate, daysVisible]
+  );
+
+  return { allocations, validSchedules, dateStrings };
 }
 
 export default function AllocationGrid() {

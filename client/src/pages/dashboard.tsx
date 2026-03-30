@@ -14,7 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, ChevronUp, Truck, Users, Grid3X3, Eye, EyeOff, X } from "lucide-react";
-import { AllocationGridContent } from "@/pages/allocation-grid";
+import { AllocationGridContent, useAllocationTotalsData } from "@/pages/allocation-grid";
+import { getEffectiveTrucksForDate } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -275,6 +276,122 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+const COL_WIDTH = 56;
+const LABEL_WIDTH = 220;
+
+function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible: number }) {
+  const { allocations, validSchedules, dateStrings } = useAllocationTotalsData(startDate, daysVisible);
+
+  return (
+    <div className="shrink-0 overflow-x-auto border-b bg-muted/20" data-testid="totals-strip">
+      <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
+        <tbody>
+          <tr className="bg-muted/30">
+            <td
+              className="sticky left-0 z-10 bg-muted border-r px-3 py-1 font-semibold text-xs text-muted-foreground whitespace-nowrap"
+              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+              data-testid="text-hauler-totals"
+            >
+              Hauler Totals
+            </td>
+            {dateStrings.map((ds, i) => {
+              const dayTotal = allocations
+                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
+                .reduce((sum, a) => sum + a.trucksPerShift, 0);
+              const nightTotal = allocations
+                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
+                .reduce((sum, a) => sum + a.trucksPerShift, 0);
+              return (
+                <td key={i} className="border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-total-${ds}`}>
+                  {(["day", "night"] as const).map((shift) => {
+                    const val = shift === "day" ? dayTotal : nightTotal;
+                    const label = shift === "day" ? "D" : "N";
+                    return (
+                      <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
+                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                        <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
+                      </div>
+                    );
+                  })}
+                </td>
+              );
+            })}
+          </tr>
+          <tr className="bg-muted/20">
+            <td
+              className="sticky left-0 z-10 bg-muted border-r px-3 py-1 font-semibold text-xs text-muted-foreground whitespace-nowrap"
+              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+              data-testid="text-frac-needs-total"
+            >
+              Frac Needs Total
+            </td>
+            {dateStrings.map((ds, i) => {
+              const fracNeedsTotal = validSchedules
+                .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+                .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+              return (
+                <td
+                  key={i}
+                  className="border-r text-center text-xs font-medium py-1 text-muted-foreground"
+                  style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                  data-testid={`strip-frac-needs-${ds}`}
+                >
+                  {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
+                </td>
+              );
+            })}
+          </tr>
+          <tr className="bg-muted/10">
+            <td
+              className="sticky left-0 z-10 bg-muted border-t border-t-border border-r px-3 py-1 font-semibold text-xs whitespace-nowrap"
+              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+              data-testid="text-hauler-surplus"
+            >
+              Hauler Surplus
+            </td>
+            {dateStrings.map((ds, i) => {
+              const dayTotal = allocations
+                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
+                .reduce((sum, a) => sum + a.trucksPerShift, 0);
+              const nightTotal = allocations
+                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
+                .reduce((sum, a) => sum + a.trucksPerShift, 0);
+              const fracNeedsTotal = validSchedules
+                .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+                .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+              const hasFracActivity = fracNeedsTotal > 0;
+              return (
+                <td key={i} className="border-t border-t-border border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-surplus-${ds}`}>
+                  {(["day", "night"] as const).map((shift) => {
+                    const shiftTotal = shift === "day" ? dayTotal : nightTotal;
+                    const surplus = shiftTotal - fracNeedsTotal;
+                    const label = shift === "day" ? "D" : "N";
+                    return (
+                      <div
+                        key={shift}
+                        className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
+                          hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                          hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                          "text-muted-foreground"
+                        }`}
+                      >
+                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                        <span className="flex-1 text-center">
+                          {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </td>
+              );
+            })}
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -580,6 +697,9 @@ export default function Dashboard() {
               {gridCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               Allocation Grid
             </button>
+            {!gridCollapsed && gridStartDate && gridDaysVisible && (
+              <TotalsStrip startDate={gridStartDate} daysVisible={gridDaysVisible} />
+            )}
             {!gridCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
                 <AllocationGridContent
