@@ -80,6 +80,7 @@ export const allocationBlocks = pgTable("allocation_blocks", {
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   trucksPerShift: integer("trucks_per_shift").notNull(),
+  shift: text("shift").notNull().default("both"),
 });
 
 export const presets = pgTable("presets", {

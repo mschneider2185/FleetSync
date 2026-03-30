@@ -29,6 +29,7 @@ interface EditingCell {
   dateStr: string;
   allocId: number | null;
   originalValue: number;
+  shift: "day" | "night";
 }
 
 interface RangeSelection {
@@ -36,6 +37,7 @@ interface RangeSelection {
   haulerId: number;
   startDateStr: string;
   endDateStr: string;
+  shift: "day" | "night";
 }
 
 interface DragFill {
@@ -44,6 +46,7 @@ interface DragFill {
   sourceDateStr: string;
   sourceValue: number;
   currentDateStr: string;
+  shift: "day" | "night";
 }
 
 interface AllocationGridContentProps {
@@ -204,6 +207,23 @@ export function AllocationGridContent({
     ) || null;
   }, [allocations]);
 
+  const getShiftAllocForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
+    const specific = allocations.find(a =>
+      a.fracJobId === fracJobId && a.haulerId === haulerId &&
+      a.startDate <= dateStr && a.endDate >= dateStr && a.shift === shift
+    );
+    if (specific) return specific;
+    return allocations.find(a =>
+      a.fracJobId === fracJobId && a.haulerId === haulerId &&
+      a.startDate <= dateStr && a.endDate >= dateStr && (a.shift === "both" || !a.shift)
+    ) || null;
+  }, [allocations]);
+
+  const getShiftTrucksForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
+    const alloc = getShiftAllocForDay(fracJobId, haulerId, dateStr, shift);
+    return alloc ? alloc.trucksPerShift : 0;
+  }, [getShiftAllocForDay]);
+
   const getTrucksForDay = useCallback((fracJobId: number, haulerId: number, dateStr: string) => {
     const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
     return alloc ? alloc.trucksPerShift : 0;
@@ -212,6 +232,13 @@ export function AllocationGridContent({
   const getTotalForFracDay = useCallback((fracJobId: number, dateStr: string) => {
     return allocations
       .filter(a => a.fracJobId === fracJobId && a.startDate <= dateStr && a.endDate >= dateStr)
+      .reduce((sum, a) => sum + a.trucksPerShift, 0);
+  }, [allocations]);
+
+  const getShiftTotalForFracDay = useCallback((fracJobId: number, dateStr: string, shift: "day" | "night") => {
+    return allocations
+      .filter(a => a.fracJobId === fracJobId && a.startDate <= dateStr && a.endDate >= dateStr &&
+        (a.shift === shift || a.shift === "both" || !a.shift))
       .reduce((sum, a) => sum + a.trucksPerShift, 0);
   }, [allocations]);
 
@@ -269,7 +296,7 @@ export function AllocationGridContent({
   });
 
   const createAllocMutation = useMutation({
-    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean }) => {
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; shift?: string; force?: boolean }) => {
       return allocRequest("POST", "/api/allocations", payload, () => {
         createAllocMutation.mutate({ ...payload, force: true });
       });
@@ -307,43 +334,32 @@ export function AllocationGridContent({
   });
 
   const splitAndEditMutation = useMutation({
-    mutationFn: async ({ alloc, dateStr, newValue }: { alloc: AllocationBlock; dateStr: string; newValue: number }) => {
+    mutationFn: async ({ alloc, dateStr, newValue, shift }: { alloc: AllocationBlock; dateStr: string; newValue: number; shift: "day" | "night" }) => {
       const prevDay = format(addDays(new Date(dateStr + "T00:00:00"), -1), "yyyy-MM-dd");
       const nextDay = format(addDays(new Date(dateStr + "T00:00:00"), 1), "yyyy-MM-dd");
+      const allocShift = alloc.shift ?? "both";
 
       await apiRequest("DELETE", `/api/allocations/${alloc.id}`);
 
       if (alloc.startDate < dateStr) {
         await apiRequest("POST", "/api/allocations", {
-          scenarioId: alloc.scenarioId,
-          fracJobId: alloc.fracJobId,
-          haulerId: alloc.haulerId,
-          startDate: alloc.startDate,
-          endDate: prevDay,
-          trucksPerShift: alloc.trucksPerShift,
-          force: true,
+          scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+          startDate: alloc.startDate, endDate: prevDay, trucksPerShift: alloc.trucksPerShift,
+          shift: allocShift, force: true,
         });
       }
 
       await apiRequest("POST", "/api/allocations", {
-        scenarioId: alloc.scenarioId,
-        fracJobId: alloc.fracJobId,
-        haulerId: alloc.haulerId,
-        startDate: dateStr,
-        endDate: dateStr,
-        trucksPerShift: newValue,
-        force: true,
+        scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+        startDate: dateStr, endDate: dateStr, trucksPerShift: newValue,
+        shift, force: true,
       });
 
       if (alloc.endDate > dateStr) {
         await apiRequest("POST", "/api/allocations", {
-          scenarioId: alloc.scenarioId,
-          fracJobId: alloc.fracJobId,
-          haulerId: alloc.haulerId,
-          startDate: nextDay,
-          endDate: alloc.endDate,
-          trucksPerShift: alloc.trucksPerShift,
-          force: true,
+          scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+          startDate: nextDay, endDate: alloc.endDate, trucksPerShift: alloc.trucksPerShift,
+          shift: allocShift, force: true,
         });
       }
     },
@@ -353,8 +369,46 @@ export function AllocationGridContent({
     },
   });
 
+  const splitBothAndEditMutation = useMutation({
+    mutationFn: async ({ alloc, dateStr, newValue, shift }: { alloc: AllocationBlock; dateStr: string; newValue: number; shift: "day" | "night" }) => {
+      const otherShift: "day" | "night" = shift === "day" ? "night" : "day";
+      const originalValue = alloc.trucksPerShift;
+      const prevDay = format(addDays(new Date(dateStr + "T00:00:00"), -1), "yyyy-MM-dd");
+      const nextDay = format(addDays(new Date(dateStr + "T00:00:00"), 1), "yyyy-MM-dd");
+
+      await apiRequest("DELETE", `/api/allocations/${alloc.id}`);
+
+      if (alloc.startDate < dateStr) {
+        await apiRequest("POST", "/api/allocations", {
+          scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+          startDate: alloc.startDate, endDate: prevDay, trucksPerShift: originalValue,
+          shift: "both", force: true,
+        });
+      }
+      if (alloc.endDate > dateStr) {
+        await apiRequest("POST", "/api/allocations", {
+          scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+          startDate: nextDay, endDate: alloc.endDate, trucksPerShift: originalValue,
+          shift: "both", force: true,
+        });
+      }
+      await apiRequest("POST", "/api/allocations", {
+        scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+        startDate: dateStr, endDate: dateStr, trucksPerShift: newValue, shift, force: true,
+      });
+      await apiRequest("POST", "/api/allocations", {
+        scenarioId: alloc.scenarioId, fracJobId: alloc.fracJobId, haulerId: alloc.haulerId,
+        startDate: dateStr, endDate: dateStr, trucksPerShift: originalValue, shift: otherShift, force: true,
+      });
+    },
+    onSettled: refreshAllocations,
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update allocation", variant: "destructive" });
+    },
+  });
+
   const bulkAllocMutation = useMutation({
-    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; force?: boolean; setZero?: boolean }) => {
+    mutationFn: async (payload: { fracJobId: number; haulerId: number; startDate: string; endDate: string; trucksPerShift: number; scenarioId: number; shift?: string; force?: boolean; setZero?: boolean }) => {
       return allocRequest("POST", "/api/allocations/bulk", payload, () => {
         bulkAllocMutation.mutate({ ...payload, force: true });
       });
@@ -370,10 +424,10 @@ export function AllocationGridContent({
     },
   });
 
-  const startEditing = (fracJobId: number, haulerId: number, dateStr: string) => {
+  const startEditing = (fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
     if (isSavingRef.current) return;
     if (isDraggingRef.current) return;
-    const alloc = getAllocForDay(fracJobId, haulerId, dateStr);
+    const alloc = getShiftAllocForDay(fracJobId, haulerId, dateStr, shift);
     const currentValue = alloc ? alloc.trucksPerShift : 0;
     setEditingCell({
       fracJobId,
@@ -381,6 +435,7 @@ export function AllocationGridContent({
       dateStr,
       allocId: alloc?.id || null,
       originalValue: currentValue,
+      shift,
     });
     setEditValue(alloc ? currentValue.toString() : "");
   };
@@ -396,6 +451,7 @@ export function AllocationGridContent({
 
     const newValue = parseInt(editValue) || 0;
     const cell = editingCell;
+    const shift = cell.shift;
 
     setEditingCell(null);
     setEditValue("");
@@ -408,13 +464,23 @@ export function AllocationGridContent({
     }
 
     try {
-      if (cell.allocId) {
-        const alloc = allocations.find(a => a.id === cell.allocId);
-        if (alloc && (alloc.startDate < cell.dateStr || alloc.endDate > cell.dateStr)) {
-          splitAndEditMutation.mutate({ alloc, dateStr: cell.dateStr, newValue }, { onSettled: resetGuard });
+      const exactShiftAlloc = allocations.find(a =>
+        a.fracJobId === cell.fracJobId && a.haulerId === cell.haulerId &&
+        a.startDate <= cell.dateStr && a.endDate >= cell.dateStr && a.shift === shift
+      );
+      const bothAlloc = allocations.find(a =>
+        a.fracJobId === cell.fracJobId && a.haulerId === cell.haulerId &&
+        a.startDate <= cell.dateStr && a.endDate >= cell.dateStr && (a.shift === "both" || !a.shift)
+      );
+
+      if (exactShiftAlloc) {
+        if (exactShiftAlloc.startDate < cell.dateStr || exactShiftAlloc.endDate > cell.dateStr) {
+          splitAndEditMutation.mutate({ alloc: exactShiftAlloc, dateStr: cell.dateStr, newValue, shift }, { onSettled: resetGuard });
         } else {
-          updateAllocMutation.mutate({ allocId: cell.allocId, trucksPerShift: newValue }, { onSettled: resetGuard });
+          updateAllocMutation.mutate({ allocId: exactShiftAlloc.id, trucksPerShift: newValue }, { onSettled: resetGuard });
         }
+      } else if (bothAlloc) {
+        splitBothAndEditMutation.mutate({ alloc: bothAlloc, dateStr: cell.dateStr, newValue, shift }, { onSettled: resetGuard });
       } else if (editValue !== "") {
         createAllocMutation.mutate({
           fracJobId: cell.fracJobId,
@@ -423,6 +489,7 @@ export function AllocationGridContent({
           endDate: cell.dateStr,
           trucksPerShift: newValue,
           scenarioId: activeScenarioId,
+          shift,
         }, { onSettled: resetGuard });
       } else {
         resetGuard();
@@ -430,7 +497,7 @@ export function AllocationGridContent({
     } catch {
       resetGuard();
     }
-  }, [editingCell, editValue, activeScenarioId, allocations, splitAndEditMutation, updateAllocMutation, createAllocMutation]);
+  }, [editingCell, editValue, activeScenarioId, allocations, splitAndEditMutation, splitBothAndEditMutation, updateAllocMutation, createAllocMutation]);
 
   useEffect(() => {
     if (editingCell && editInputRef.current) {
@@ -443,40 +510,41 @@ export function AllocationGridContent({
     }
   }, [editingCell]);
 
-  const handleCellClick = (fracJobId: number, haulerId: number, dateStr: string, e: React.MouseEvent) => {
+  const handleShiftCellClick = (fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night", e: React.MouseEvent) => {
     if (isDraggingRef.current) return;
 
-    if (e.shiftKey && rangeSelection && rangeSelection.fracJobId === fracJobId && rangeSelection.haulerId === haulerId) {
+    if (e.shiftKey && rangeSelection && rangeSelection.fracJobId === fracJobId && rangeSelection.haulerId === haulerId && rangeSelection.shift === shift) {
       const start = rangeSelection.startDateStr;
       const newEnd = dateStr;
       const orderedStart = start <= newEnd ? start : newEnd;
       const orderedEnd = start <= newEnd ? newEnd : start;
-      setRangeSelection({ fracJobId, haulerId, startDateStr: orderedStart, endDateStr: orderedEnd });
+      setRangeSelection({ fracJobId, haulerId, startDateStr: orderedStart, endDateStr: orderedEnd, shift });
       return;
     }
 
-    setRangeSelection({ fracJobId, haulerId, startDateStr: dateStr, endDateStr: dateStr });
+    setRangeSelection({ fracJobId, haulerId, startDateStr: dateStr, endDateStr: dateStr, shift });
     setBulkValue("");
   };
 
-  const handleCellDoubleClick = (fracJobId: number, haulerId: number, dateStr: string) => {
+  const handleShiftCellDoubleClick = (fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
     if (isDraggingRef.current) return;
     setRangeSelection(null);
     setBulkValue("");
-    startEditing(fracJobId, haulerId, dateStr);
+    startEditing(fracJobId, haulerId, dateStr, shift);
   };
 
-  const isInRange = (fracJobId: number, haulerId: number, dateStr: string) => {
+  const isInRange = (fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
     if (!rangeSelection) return false;
     return rangeSelection.fracJobId === fracJobId &&
       rangeSelection.haulerId === haulerId &&
+      rangeSelection.shift === shift &&
       dateStr >= rangeSelection.startDateStr &&
       dateStr <= rangeSelection.endDateStr;
   };
 
-  const isInDragFill = (fracJobId: number, haulerId: number, dateStr: string) => {
+  const isInDragFill = (fracJobId: number, haulerId: number, dateStr: string, shift: "day" | "night") => {
     if (!dragFill) return false;
-    if (dragFill.fracJobId !== fracJobId || dragFill.haulerId !== haulerId) return false;
+    if (dragFill.fracJobId !== fracJobId || dragFill.haulerId !== haulerId || dragFill.shift !== shift) return false;
     const start = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.sourceDateStr : dragFill.currentDateStr;
     const end = dragFill.sourceDateStr <= dragFill.currentDateStr ? dragFill.currentDateStr : dragFill.sourceDateStr;
     return dateStr >= start && dateStr <= end;
@@ -493,6 +561,7 @@ export function AllocationGridContent({
       endDate: rangeSelection.endDateStr,
       trucksPerShift: value,
       scenarioId: activeScenarioId,
+      shift: rangeSelection.shift,
       ...(value === 0 ? { setZero: true } : {}),
     });
   };
@@ -506,14 +575,15 @@ export function AllocationGridContent({
       endDate: rangeSelection.endDateStr,
       trucksPerShift: 0,
       scenarioId: activeScenarioId,
+      shift: rangeSelection.shift,
     });
   };
 
-  const handleDragStart = (fracJobId: number, haulerId: number, dateStr: string, value: number, e: React.MouseEvent) => {
+  const handleDragStart = (fracJobId: number, haulerId: number, dateStr: string, value: number, shift: "day" | "night", e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     isDraggingRef.current = true;
-    setDragFill({ fracJobId, haulerId, sourceDateStr: dateStr, sourceValue: value, currentDateStr: dateStr });
+    setDragFill({ fracJobId, haulerId, sourceDateStr: dateStr, sourceValue: value, currentDateStr: dateStr, shift });
     setRangeSelection(null);
   };
 
@@ -546,6 +616,7 @@ export function AllocationGridContent({
       endDate: end,
       trucksPerShift: dragFill.sourceValue,
       scenarioId: activeScenarioId,
+      shift: dragFill.shift,
       ...(dragFill.sourceValue === 0 ? { setZero: true } : {}),
     });
   }, [dragFill, activeScenarioId, bulkAllocMutation]);
@@ -669,7 +740,8 @@ export function AllocationGridContent({
               const e = new Date(rangeSelection!.endDateStr + "T00:00:00");
               const days = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
               const hauler = haulerMap.get(rangeSelection!.haulerId);
-              return `${days} days selected${hauler ? ` — ${hauler.name}` : ""}`;
+              const shiftLabel = rangeSelection!.shift === "day" ? " · Day" : " · Night";
+              return `${days} days selected${hauler ? ` — ${hauler.name}` : ""}${shiftLabel}`;
             })()}
           </span>
           <Input
@@ -825,22 +897,38 @@ export function AllocationGridContent({
                           />
                         );
                       }
-                      const total = getTotalForFracDay(schedule.fracJobId, ds);
+                      const dayTotal = getShiftTotalForFracDay(schedule.fracJobId, ds, "day");
+                      const nightTotal = getShiftTotalForFracDay(schedule.fracJobId, ds, "night");
+                      const total = dayTotal + nightTotal;
                       const needed = getEffectiveTrucksForDate(schedule, ds);
-                      const diff = total - needed;
+                      const dayDiff = dayTotal - needed;
+                      const nightDiff = nightTotal - needed;
                       return (
                         <td
                           key={i}
-                          className={`border-b border-r text-center font-semibold py-1 ${getCellColor(total, needed)}`}
+                          className="border-b border-r p-0"
                           style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                           data-testid={`cell-frac-total-${frac.id}-${ds}`}
                         >
-                          <div className="leading-tight">{total > 0 ? total : ""}</div>
-                          {diff !== 0 && total > 0 && (
-                            <div className={`text-[9px] font-normal leading-tight ${diff < 0 ? "text-red-600" : "text-emerald-600"}`}>
-                              {diff > 0 ? `+${diff}` : diff}
-                            </div>
-                          )}
+                          {(["day", "night"] as const).map((shift) => {
+                            const shiftTotal = shift === "day" ? dayTotal : nightTotal;
+                            const shiftDiff = shift === "day" ? dayDiff : nightDiff;
+                            const label = shift === "day" ? "D" : "N";
+                            return (
+                              <div
+                                key={shift}
+                                className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${getCellColor(shiftTotal, needed)}`}
+                              >
+                                <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                                <span className="flex-1 text-center">{shiftTotal > 0 ? shiftTotal : ""}</span>
+                                {shiftDiff !== 0 && shiftTotal > 0 && (
+                                  <span className={`text-[8px] font-normal pr-0.5 ${shiftDiff < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                                    {shiftDiff > 0 ? `+${shiftDiff}` : shiftDiff}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </td>
                       );
                     })}
@@ -893,75 +981,81 @@ export function AllocationGridContent({
                               />
                             );
                           }
-                          const cellAlloc = getAllocForDay(schedule.fracJobId, haulerId, ds);
-                          const trucks = cellAlloc !== null ? cellAlloc.trucksPerShift : null;
-                          const isEditing = editingCell?.fracJobId === schedule.fracJobId &&
-                            editingCell?.haulerId === haulerId &&
-                            editingCell?.dateStr === ds;
-                          const inRange = isInRange(schedule.fracJobId, haulerId, ds);
-                          const inDrag = isInDragFill(schedule.fracJobId, haulerId, ds);
 
-                          if (isEditing) {
+                          const dayTrucks = getShiftTrucksForDay(schedule.fracJobId, haulerId, ds, "day");
+                          const nightTrucks = getShiftTrucksForDay(schedule.fracJobId, haulerId, ds, "night");
+                          const isDayEditing = editingCell?.fracJobId === schedule.fracJobId && editingCell?.haulerId === haulerId && editingCell?.dateStr === ds && editingCell?.shift === "day";
+                          const isNightEditing = editingCell?.fracJobId === schedule.fracJobId && editingCell?.haulerId === haulerId && editingCell?.dateStr === ds && editingCell?.shift === "night";
+                          const dayInRange = isInRange(schedule.fracJobId, haulerId, ds, "day");
+                          const nightInRange = isInRange(schedule.fracJobId, haulerId, ds, "night");
+                          const dayInDrag = isInDragFill(schedule.fracJobId, haulerId, ds, "day");
+                          const nightInDrag = isInDragFill(schedule.fracJobId, haulerId, ds, "night");
+
+                          const renderSubCell = (shift: "day" | "night") => {
+                            const trucks = shift === "day" ? dayTrucks : nightTrucks;
+                            const isEditing = shift === "day" ? isDayEditing : isNightEditing;
+                            const inRange = shift === "day" ? dayInRange : nightInRange;
+                            const inDrag = shift === "day" ? dayInDrag : nightInDrag;
+                            const label = shift === "day" ? "D" : "N";
+                            const isDivider = shift === "night";
+
+                            if (isEditing) {
+                              return (
+                                <div key={shift} className={`relative flex items-center ${isDivider ? "border-t border-border/40" : ""}`}>
+                                  <span className="text-[8px] text-muted-foreground/60 w-3 shrink-0 pl-0.5">{label}</span>
+                                  <input
+                                    ref={editInputRef}
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value.replace(/[^0-9]/g, ""))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+                                      if (e.key === "Escape") { e.preventDefault(); cancelEditing(); }
+                                      if (e.key === "Tab") { e.preventDefault(); commitEdit(); }
+                                    }}
+                                    onBlur={cancelEditing}
+                                    className="flex-1 h-full text-center text-xs bg-primary/10 border-2 border-primary outline-none py-0.5"
+                                    data-testid={`input-cell-edit-${schedule.fracJobId}-${haulerId}-${ds}-${shift}`}
+                                  />
+                                </div>
+                              );
+                            }
+
                             return (
-                              <td
-                                key={i}
-                                className="border-b border-r p-0"
-                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                              <div
+                                key={shift}
+                                className={`relative flex items-center justify-center py-0.5 cursor-pointer select-none transition-colors group/sub ${isDivider ? "border-t border-border/40" : ""} ${
+                                  inRange ? "bg-blue-100 dark:bg-blue-900/30" :
+                                  inDrag ? "bg-green-100 dark:bg-green-900/30" :
+                                  "hover:bg-accent/50"
+                                }`}
+                                onClick={(e) => handleShiftCellClick(schedule.fracJobId, haulerId, ds, shift, e)}
+                                onDoubleClick={() => handleShiftCellDoubleClick(schedule.fracJobId, haulerId, ds, shift)}
+                                onMouseEnter={() => handleDragMove(schedule.fracJobId, haulerId, ds)}
+                                data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}-${shift}`}
                               >
-                                <input
-                                  ref={editInputRef}
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  value={editValue}
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(/[^0-9]/g, "");
-                                    setEditValue(val);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      commitEdit();
-                                    }
-                                    if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      cancelEditing();
-                                    }
-                                    if (e.key === "Tab") {
-                                      e.preventDefault();
-                                      commitEdit();
-                                    }
-                                  }}
-                                  onBlur={cancelEditing}
-                                  className="w-full h-full text-center text-xs bg-primary/10 border-2 border-primary outline-none py-1"
-                                  style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                                  data-testid={`input-cell-edit-${schedule.fracJobId}-${haulerId}-${ds}`}
-                                />
-                              </td>
+                                <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                                <span className="text-xs text-muted-foreground flex-1 text-center">{trucks > 0 ? trucks : ""}</span>
+                                {trucks > 0 && !isDraggingRef.current && (
+                                  <div
+                                    className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-3 bg-primary/50 hover:bg-primary cursor-crosshair rounded-sm opacity-0 group-hover/hauler-row:opacity-100 transition-opacity"
+                                    onMouseDown={(e) => handleDragStart(schedule.fracJobId, haulerId, ds, trucks, shift, e)}
+                                    data-testid={`handle-drag-${schedule.fracJobId}-${haulerId}-${ds}-${shift}`}
+                                  />
+                                )}
+                              </div>
                             );
-                          }
+                          };
 
                           return (
                             <td
                               key={i}
-                              className={`border-b border-r text-center py-1 text-muted-foreground cursor-pointer transition-colors relative select-none ${
-                                inRange ? "bg-blue-100 dark:bg-blue-900/30 ring-1 ring-inset ring-blue-400/50" :
-                                inDrag ? "bg-green-100 dark:bg-green-900/30 ring-1 ring-inset ring-green-400/50" :
-                                "hover:bg-accent/50"
-                              }`}
+                              className="border-b border-r p-0 relative"
                               style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                              onClick={(e) => handleCellClick(schedule.fracJobId, haulerId, ds, e)}
-                              onDoubleClick={() => handleCellDoubleClick(schedule.fracJobId, haulerId, ds)}
-                              onMouseEnter={() => handleDragMove(schedule.fracJobId, haulerId, ds)}
-                              data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}`}
                             >
-                              {trucks !== null ? trucks : ""}
-                              {trucks !== null && !isDraggingRef.current && (
-                                <div
-                                  className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-4 bg-primary/60 hover:bg-primary cursor-crosshair rounded-sm opacity-0 group-hover/hauler-row:opacity-100 transition-opacity"
-                                  onMouseDown={(e) => handleDragStart(schedule.fracJobId, haulerId, ds, trucks, e)}
-                                  data-testid={`handle-drag-${schedule.fracJobId}-${haulerId}-${ds}`}
-                                />
-                              )}
+                              {renderSubCell("day")}
+                              {renderSubCell("night")}
                             </td>
                           );
                         })}
@@ -975,24 +1069,36 @@ export function AllocationGridContent({
             <tbody>
               <tr className="bg-muted/30">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-2 font-semibold text-sm"
+                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-1 font-semibold text-sm"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-totals"
                 >
                   Hauler Totals
                 </td>
                 {dateStrings.map((ds, i) => {
-                  const totalAllDay = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds)
+                  const dayTotal = allocations
+                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
+                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
+                  const nightTotal = allocations
+                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
                   return (
                     <td
                       key={i}
-                      className="border-b border-r text-center font-semibold py-2"
+                      className="border-b border-r p-0"
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-total-${ds}`}
                     >
-                      {totalAllDay > 0 ? totalAllDay : ""}
+                      {(["day", "night"] as const).map((shift) => {
+                        const val = shift === "day" ? dayTotal : nightTotal;
+                        const label = shift === "day" ? "D" : "N";
+                        return (
+                          <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
+                            <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                            <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
+                          </div>
+                        );
+                      })}
                     </td>
                   );
                 })}
@@ -1023,33 +1129,50 @@ export function AllocationGridContent({
               </tr>
               <tr className="bg-muted/10">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-3 py-2 font-semibold text-sm"
+                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-3 py-1 font-semibold text-sm"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-surplus"
                 >
                   Hauler Surplus
                 </td>
                 {dateStrings.map((ds, i) => {
-                  const totalAllDay = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds)
+                  const dayTotal = allocations
+                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
+                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
+                  const nightTotal = allocations
+                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
                   const fracNeedsTotal = validSchedules
                     .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
                     .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                  const surplus = totalAllDay - fracNeedsTotal;
                   const hasFracActivity = fracNeedsTotal > 0;
                   return (
                     <td
                       key={i}
-                      className={`border-t-2 border-t-border border-b border-r text-center font-semibold py-2 ${
-                        hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                        hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                        "text-muted-foreground"
-                      }`}
+                      className="border-t-2 border-t-border border-b border-r p-0"
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-surplus-${ds}`}
                     >
-                      {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                      {(["day", "night"] as const).map((shift) => {
+                        const shiftTotal = shift === "day" ? dayTotal : nightTotal;
+                        const surplus = shiftTotal - fracNeedsTotal;
+                        const label = shift === "day" ? "D" : "N";
+                        return (
+                          <div
+                            key={shift}
+                            className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
+                              hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                              hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                              "text-muted-foreground"
+                            }`}
+                          >
+                            <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                            <span className="flex-1 text-center">
+                              {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </td>
                   );
                 })}

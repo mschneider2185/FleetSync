@@ -164,6 +164,7 @@ export async function registerRoutes(
               startDate: a.startDate,
               endDate: a.endDate,
               trucksPerShift: a.trucksPerShift,
+              shift: a.shift ?? "both",
             }))
           );
         }
@@ -222,6 +223,7 @@ export async function registerRoutes(
                 startDate: a.startDate,
                 endDate: a.endDate,
                 trucksPerShift: a.trucksPerShift,
+                shift: a.shift ?? "both",
               }))
             );
           }
@@ -440,7 +442,7 @@ export async function registerRoutes(
   });
   async function checkHaulerCapacity(
     scenarioId: number, haulerId: number, trucksPerShift: number,
-    startDate: string, endDate: string, excludeAllocId?: number
+    startDate: string, endDate: string, excludeAllocId?: number, shift?: string
   ): Promise<string | null> {
     const hauler = await storage.getHauler(haulerId);
     if (!hauler) return null;
@@ -460,7 +462,13 @@ export async function registerRoutes(
         if (a.haulerId !== haulerId) continue;
         if (excludeAllocId && a.id === excludeAllocId) continue;
         if (a.startDate <= ds && a.endDate >= ds) {
-          totalOnDay += a.trucksPerShift;
+          if (shift && shift !== "both") {
+            if (a.shift === shift || a.shift === "both") {
+              totalOnDay += a.trucksPerShift;
+            }
+          } else {
+            totalOnDay += a.trucksPerShift;
+          }
         }
       }
 
@@ -480,7 +488,7 @@ export async function registerRoutes(
       if (!(await checkScenarioEditable(req, res, validated.scenarioId))) return;
       const overlapping = await storage.findOverlappingAllocations(
         validated.scenarioId, validated.fracJobId, validated.haulerId,
-        validated.startDate, validated.endDate
+        validated.startDate, validated.endDate, undefined, validated.shift ?? "both"
       );
       if (overlapping.length > 0) {
         return res.status(409).json({ message: "An allocation already exists for this hauler and frac job on the specified dates" });
@@ -488,7 +496,7 @@ export async function registerRoutes(
       if (!force) {
         const capacityWarning = await checkHaulerCapacity(
           validated.scenarioId, validated.haulerId, validated.trucksPerShift,
-          validated.startDate, validated.endDate
+          validated.startDate, validated.endDate, undefined, validated.shift ?? "both"
         );
         if (capacityWarning) {
           return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });
@@ -552,9 +560,11 @@ export async function registerRoutes(
       const validated = validateBody(insertAllocationBlockSchema, body);
       if (!(await checkScenarioEditable(req, res, validated.scenarioId))) return;
 
+      const targetShift = validated.shift ?? "both";
+
       const overlapping = await storage.findOverlappingAllocations(
         validated.scenarioId, validated.fracJobId, validated.haulerId,
-        validated.startDate, validated.endDate
+        validated.startDate, validated.endDate, undefined, targetShift
       );
 
       for (const o of overlapping) {
@@ -570,6 +580,7 @@ export async function registerRoutes(
             startDate: o.startDate,
             endDate: prevDay.toISOString().split("T")[0],
             trucksPerShift: o.trucksPerShift,
+            shift: o.shift ?? "both",
           });
         }
 
@@ -583,6 +594,7 @@ export async function registerRoutes(
             startDate: nextDay.toISOString().split("T")[0],
             endDate: o.endDate,
             trucksPerShift: o.trucksPerShift,
+            shift: o.shift ?? "both",
           });
         }
       }
@@ -591,7 +603,7 @@ export async function registerRoutes(
         if (!force && validated.trucksPerShift > 0) {
           const capacityWarning = await checkHaulerCapacity(
             validated.scenarioId, validated.haulerId, validated.trucksPerShift,
-            validated.startDate, validated.endDate
+            validated.startDate, validated.endDate, undefined, targetShift
           );
           if (capacityWarning) {
             return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });

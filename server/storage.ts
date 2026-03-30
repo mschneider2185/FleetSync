@@ -13,7 +13,7 @@ import {
   type FracDailyEvent, type InsertFracDailyEvent,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, lte, gte, ne } from "drizzle-orm";
+import { eq, and, lte, gte, ne, or } from "drizzle-orm";
 
 export interface IStorage {
   getLanes(): Promise<Lane[]>;
@@ -55,7 +55,7 @@ export interface IStorage {
 
   getAllocationsByScenario(scenarioId: number): Promise<AllocationBlock[]>;
   getAllocation(id: number): Promise<AllocationBlock | undefined>;
-  findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number): Promise<AllocationBlock[]>;
+  findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number, shift?: string): Promise<AllocationBlock[]>;
   createAllocation(allocation: InsertAllocationBlock): Promise<AllocationBlock>;
   updateAllocation(id: number, allocation: Partial<InsertAllocationBlock>): Promise<AllocationBlock | undefined>;
   deleteAllocation(id: number): Promise<void>;
@@ -215,8 +215,8 @@ export class DatabaseStorage implements IStorage {
     const [allocation] = await db.select().from(allocationBlocks).where(eq(allocationBlocks.id, id));
     return allocation;
   }
-  async findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number): Promise<AllocationBlock[]> {
-    let conditions = [
+  async findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number, shift?: string): Promise<AllocationBlock[]> {
+    const conditions: any[] = [
       eq(allocationBlocks.scenarioId, scenarioId),
       eq(allocationBlocks.fracJobId, fracJobId),
       eq(allocationBlocks.haulerId, haulerId),
@@ -225,6 +225,9 @@ export class DatabaseStorage implements IStorage {
     ];
     if (excludeId) {
       conditions.push(ne(allocationBlocks.id, excludeId));
+    }
+    if (shift && shift !== "both") {
+      conditions.push(or(eq(allocationBlocks.shift, shift), eq(allocationBlocks.shift, "both")));
     }
     return db.select().from(allocationBlocks).where(and(...conditions));
   }
