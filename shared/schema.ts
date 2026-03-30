@@ -177,7 +177,9 @@ export const insertFracJobSchema = createInsertSchema(fracJobs).omit({ id: true,
 export const insertScenarioFracScheduleSchema = createInsertSchema(scenarioFracSchedules).omit({ id: true });
 export const insertHaulerSchema = createInsertSchema(haulers).omit({ id: true });
 export const insertHaulerCapacityExceptionSchema = createInsertSchema(haulerCapacityExceptions).omit({ id: true });
-export const insertAllocationBlockSchema = createInsertSchema(allocationBlocks).omit({ id: true });
+export const insertAllocationBlockSchema = createInsertSchema(allocationBlocks).omit({ id: true }).extend({
+  shift: z.enum(["day", "night", "both"]).default("both"),
+});
 export const insertPresetSchema = createInsertSchema(presets).omit({ id: true, createdAt: true });
 export const insertFracDailyEventSchema = createInsertSchema(fracDailyEvents).omit({ id: true, createdAt: true });
 

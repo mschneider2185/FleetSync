@@ -13,7 +13,7 @@ import {
   type FracDailyEvent, type InsertFracDailyEvent,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, lte, gte, ne, or } from "drizzle-orm";
+import { eq, and, lte, gte, ne, or, SQL } from "drizzle-orm";
 
 export interface IStorage {
   getLanes(): Promise<Lane[]>;
@@ -216,7 +216,7 @@ export class DatabaseStorage implements IStorage {
     return allocation;
   }
   async findOverlappingAllocations(scenarioId: number, fracJobId: number, haulerId: number, startDate: string, endDate: string, excludeId?: number, shift?: string): Promise<AllocationBlock[]> {
-    const conditions: any[] = [
+    const conditions: (SQL<unknown> | undefined)[] = [
       eq(allocationBlocks.scenarioId, scenarioId),
       eq(allocationBlocks.fracJobId, fracJobId),
       eq(allocationBlocks.haulerId, haulerId),

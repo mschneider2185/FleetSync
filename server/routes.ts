@@ -17,9 +17,15 @@ import {
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import multer from "multer";
+
 import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
 import { parseSandplanCsv } from "./import/sandplan-csv";
 import { resolveImportScenario, runSandplanImport } from "./import/run-import";
+
+function toShift(s: string | null | undefined): "day" | "night" | "both" {
+  if (s === "day" || s === "night" || s === "both") return s;
+  return "both";
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -518,6 +524,7 @@ export async function registerRoutes(
       const existing = await storage.getAllocation(allocId);
       if (!existing) return res.status(404).json({ message: "Not found" });
       if (!(await checkScenarioEditable(req, res, existing.scenarioId))) return;
+      const effectiveShift = validated.shift ?? existing.shift ?? "both";
       if (validated.startDate || validated.endDate) {
         const overlapping = await storage.findOverlappingAllocations(
           validated.scenarioId ?? existing.scenarioId,
@@ -525,7 +532,8 @@ export async function registerRoutes(
           validated.haulerId ?? existing.haulerId,
           validated.startDate ?? existing.startDate,
           validated.endDate ?? existing.endDate,
-          allocId
+          allocId,
+          effectiveShift
         );
         if (overlapping.length > 0) {
           return res.status(409).json({ message: "This change would overlap with an existing allocation" });
@@ -538,7 +546,8 @@ export async function registerRoutes(
           validated.trucksPerShift ?? existing.trucksPerShift,
           validated.startDate ?? existing.startDate,
           validated.endDate ?? existing.endDate,
-          allocId
+          allocId,
+          effectiveShift
         );
         if (capacityWarning) {
           return res.status(422).json({ message: capacityWarning, requiresConfirmation: true });
@@ -568,19 +577,16 @@ export async function registerRoutes(
       );
 
       for (const o of overlapping) {
+        const oShift = toShift(o.shift);
         await storage.deleteAllocation(o.id);
 
         if (o.startDate < validated.startDate) {
           const prevDay = new Date(validated.startDate + "T00:00:00");
           prevDay.setDate(prevDay.getDate() - 1);
           await storage.createAllocation({
-            scenarioId: o.scenarioId,
-            fracJobId: o.fracJobId,
-            haulerId: o.haulerId,
-            startDate: o.startDate,
-            endDate: prevDay.toISOString().split("T")[0],
-            trucksPerShift: o.trucksPerShift,
-            shift: o.shift ?? "both",
+            scenarioId: o.scenarioId, fracJobId: o.fracJobId, haulerId: o.haulerId,
+            startDate: o.startDate, endDate: prevDay.toISOString().split("T")[0],
+            trucksPerShift: o.trucksPerShift, shift: oShift,
           });
         }
 
@@ -588,13 +594,20 @@ export async function registerRoutes(
           const nextDay = new Date(validated.endDate + "T00:00:00");
           nextDay.setDate(nextDay.getDate() + 1);
           await storage.createAllocation({
-            scenarioId: o.scenarioId,
-            fracJobId: o.fracJobId,
-            haulerId: o.haulerId,
-            startDate: nextDay.toISOString().split("T")[0],
-            endDate: o.endDate,
-            trucksPerShift: o.trucksPerShift,
-            shift: o.shift ?? "both",
+            scenarioId: o.scenarioId, fracJobId: o.fracJobId, haulerId: o.haulerId,
+            startDate: nextDay.toISOString().split("T")[0], endDate: o.endDate,
+            trucksPerShift: o.trucksPerShift, shift: oShift,
+          });
+        }
+
+        if (oShift === "both" && targetShift !== "both") {
+          const otherShift: "day" | "night" = targetShift === "day" ? "night" : "day";
+          const overlapStart = o.startDate > validated.startDate ? o.startDate : validated.startDate;
+          const overlapEnd = o.endDate < validated.endDate ? o.endDate : validated.endDate;
+          await storage.createAllocation({
+            scenarioId: o.scenarioId, fracJobId: o.fracJobId, haulerId: o.haulerId,
+            startDate: overlapStart, endDate: overlapEnd,
+            trucksPerShift: o.trucksPerShift, shift: otherShift,
           });
         }
       }
