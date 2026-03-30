@@ -456,31 +456,36 @@ export async function registerRoutes(
     const exceptions = await storage.getCapacityExceptions(haulerId);
     const allAllocations = await storage.getAllocationsByScenario(scenarioId);
 
+    const effectiveShift = toShift(shift);
+
     let d = new Date(startDate);
     const end = new Date(endDate);
     while (d <= end) {
       const ds = d.toISOString().split("T")[0];
       const exception = exceptions.find(e => e.date === ds);
       const cap = exception ? (exception.maxTrucksPerShift ?? maxCap) : maxCap;
+      if (!cap) { d.setDate(d.getDate() + 1); continue; }
 
-      let totalOnDay = trucksPerShift;
-      for (const a of allAllocations) {
-        if (a.haulerId !== haulerId) continue;
-        if (excludeAllocId && a.id === excludeAllocId) continue;
-        if (a.startDate <= ds && a.endDate >= ds) {
-          if (shift && shift !== "both") {
-            if (a.shift === shift || a.shift === "both") {
-              totalOnDay += a.trucksPerShift;
+      const shiftsToCheck: ("day" | "night")[] = effectiveShift === "both" ? ["day", "night"] : [effectiveShift];
+
+      for (const checkShift of shiftsToCheck) {
+        let channelTotal = trucksPerShift;
+        for (const a of allAllocations) {
+          if (a.haulerId !== haulerId) continue;
+          if (excludeAllocId && a.id === excludeAllocId) continue;
+          if (a.startDate <= ds && a.endDate >= ds) {
+            const aShift = toShift(a.shift);
+            if (aShift === checkShift || aShift === "both") {
+              channelTotal += a.trucksPerShift;
             }
-          } else {
-            totalOnDay += a.trucksPerShift;
           }
+        }
+        if (channelTotal > cap) {
+          const shiftLabel = effectiveShift === "both" ? `${checkShift} shift on` : `on`;
+          return `${hauler.name} would have ${channelTotal} trucks assigned ${shiftLabel} ${ds} but max capacity is ${cap}`;
         }
       }
 
-      if (totalOnDay > cap) {
-        return `${hauler.name} would have ${totalOnDay} trucks assigned on ${ds} but max capacity is ${cap}`;
-      }
       d.setDate(d.getDate() + 1);
     }
     return null;
