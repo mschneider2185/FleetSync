@@ -284,6 +284,8 @@ const LABEL_WIDTH = 220;
 
 function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible: number }) {
   const { allocations, validSchedules, dateStrings } = useAllocationTotalsData(startDate, daysVisible);
+  const [totalsExpanded, setTotalsExpanded] = useState(false);
+  const [surplusExpanded, setSurplusExpanded] = useState(false);
 
   return (
     <div className="shrink-0 overflow-x-auto border-b bg-muted/20" data-testid="totals-strip">
@@ -291,11 +293,15 @@ function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible:
         <tbody>
           <tr className="bg-muted/30">
             <td
-              className="sticky left-0 z-10 bg-muted border-r px-3 py-1 font-semibold text-xs text-muted-foreground whitespace-nowrap"
+              className="sticky left-0 z-10 bg-muted border-r px-2 py-1 font-semibold text-xs text-muted-foreground whitespace-nowrap cursor-pointer select-none"
               style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
               data-testid="text-hauler-totals"
+              onClick={() => setTotalsExpanded(v => !v)}
             >
-              Hauler Totals
+              <div className="flex items-center gap-1">
+                {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                Hauler Totals
+              </div>
             </td>
             {dateStrings.map((ds, i) => {
               const dayTotal = allocations
@@ -304,18 +310,25 @@ function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible:
               const nightTotal = allocations
                 .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
                 .reduce((sum, a) => sum + a.trucksPerShift, 0);
+              const collapsed = Math.max(dayTotal, nightTotal);
               return (
                 <td key={i} className="border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-total-${ds}`}>
-                  {(["day", "night"] as const).map((shift) => {
-                    const val = shift === "day" ? dayTotal : nightTotal;
-                    const label = shift === "day" ? "D" : "N";
-                    return (
-                      <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
-                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                        <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
-                      </div>
-                    );
-                  })}
+                  {totalsExpanded ? (
+                    (["day", "night"] as const).map((shift) => {
+                      const val = shift === "day" ? dayTotal : nightTotal;
+                      const label = shift === "day" ? "D" : "N";
+                      return (
+                        <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
+                          <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                          <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="flex items-center justify-center py-1 text-xs font-semibold">
+                      <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
+                    </div>
+                  )}
                 </td>
               );
             })}
@@ -346,11 +359,15 @@ function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible:
           </tr>
           <tr className="bg-muted/10">
             <td
-              className="sticky left-0 z-10 bg-muted border-t border-t-border border-r px-3 py-1 font-semibold text-xs whitespace-nowrap"
+              className="sticky left-0 z-10 bg-muted border-t border-t-border border-r px-2 py-1 font-semibold text-xs whitespace-nowrap cursor-pointer select-none"
               style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
               data-testid="text-hauler-surplus"
+              onClick={() => setSurplusExpanded(v => !v)}
             >
-              Hauler Surplus
+              <div className="flex items-center gap-1">
+                {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                Hauler Surplus
+              </div>
             </td>
             {dateStrings.map((ds, i) => {
               const dayTotal = allocations
@@ -363,28 +380,39 @@ function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible:
                 .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
                 .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
               const hasFracActivity = fracNeedsTotal > 0;
+              const collapsedSurplus = Math.max(dayTotal, nightTotal) - fracNeedsTotal;
+              const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
               return (
                 <td key={i} className="border-t border-t-border border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-surplus-${ds}`}>
-                  {(["day", "night"] as const).map((shift) => {
-                    const shiftTotal = shift === "day" ? dayTotal : nightTotal;
-                    const surplus = shiftTotal - fracNeedsTotal;
-                    const label = shift === "day" ? "D" : "N";
-                    return (
-                      <div
-                        key={shift}
-                        className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
-                          hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                          hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                          "text-muted-foreground"
-                        }`}
-                      >
-                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                        <span className="flex-1 text-center">
-                          {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {surplusExpanded ? (
+                    (["day", "night"] as const).map((shift) => {
+                      const shiftTotal = shift === "day" ? dayTotal : nightTotal;
+                      const surplus = shiftTotal - fracNeedsTotal;
+                      const label = shift === "day" ? "D" : "N";
+                      return (
+                        <div
+                          key={shift}
+                          className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
+                            hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                            hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                            "text-muted-foreground"
+                          }`}
+                        >
+                          <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                          <span className="flex-1 text-center">
+                            {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                          </span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
+                      <span className="text-center">
+                        {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
+                      </span>
+                    </div>
+                  )}
                 </td>
               );
             })}

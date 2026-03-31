@@ -14,7 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, ChevronRight, Plus, Download, AlertTriangle, Pencil, X, Check, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, Download, AlertTriangle, Pencil, X, Check, Trash2 } from "lucide-react";
 import type { Lane, FracJob, ScenarioFracSchedule, AllocationBlock, Hauler, Scenario } from "@shared/schema";
 import { getEffectiveTrucksForDate } from "@shared/schema";
 
@@ -74,6 +74,8 @@ export function AllocationGridContent({
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const isStandalone = !externalStartDate;
   const gridScrollRef = useRef<HTMLDivElement>(null);
+  const [totalsExpanded, setTotalsExpanded] = useState(false);
+  const [surplusExpanded, setSurplusExpanded] = useState(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1076,11 +1078,15 @@ export function AllocationGridContent({
             <tbody>
               <tr className="bg-muted/30">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-1 font-semibold text-sm"
+                  className="sticky left-0 z-10 bg-muted border-b border-r px-2 py-1 font-semibold text-sm cursor-pointer select-none"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-totals"
+                  onClick={() => setTotalsExpanded(v => !v)}
                 >
-                  Hauler Totals
+                  <div className="flex items-center gap-1">
+                    {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                    Hauler Totals
+                  </div>
                 </td>
                 {dateStrings.map((ds, i) => {
                   const dayTotal = allocations
@@ -1089,6 +1095,7 @@ export function AllocationGridContent({
                   const nightTotal = allocations
                     .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
                     .reduce((sum, a) => sum + a.trucksPerShift, 0);
+                  const collapsed = Math.max(dayTotal, nightTotal);
                   return (
                     <td
                       key={i}
@@ -1096,23 +1103,29 @@ export function AllocationGridContent({
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-total-${ds}`}
                     >
-                      {(["day", "night"] as const).map((shift) => {
-                        const val = shift === "day" ? dayTotal : nightTotal;
-                        const label = shift === "day" ? "D" : "N";
-                        return (
-                          <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
-                            <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                            <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
-                          </div>
-                        );
-                      })}
+                      {totalsExpanded ? (
+                        (["day", "night"] as const).map((shift) => {
+                          const val = shift === "day" ? dayTotal : nightTotal;
+                          const label = shift === "day" ? "D" : "N";
+                          return (
+                            <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
+                              <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                              <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex items-center justify-center py-1 text-xs font-semibold">
+                          <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
+                        </div>
+                      )}
                     </td>
                   );
                 })}
               </tr>
               <tr className="bg-muted/20">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-2 font-semibold text-sm text-muted-foreground"
+                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-1 font-semibold text-sm text-muted-foreground"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-frac-needs-total"
                 >
@@ -1125,7 +1138,7 @@ export function AllocationGridContent({
                   return (
                     <td
                       key={i}
-                      className="border-b border-r text-center font-medium py-2 text-muted-foreground"
+                      className="border-b border-r text-center text-xs font-medium py-1 text-muted-foreground"
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-frac-needs-${ds}`}
                     >
@@ -1136,11 +1149,15 @@ export function AllocationGridContent({
               </tr>
               <tr className="bg-muted/10">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-3 py-1 font-semibold text-sm"
+                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-2 py-1 font-semibold text-sm cursor-pointer select-none"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-surplus"
+                  onClick={() => setSurplusExpanded(v => !v)}
                 >
-                  Hauler Surplus
+                  <div className="flex items-center gap-1">
+                    {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                    Hauler Surplus
+                  </div>
                 </td>
                 {dateStrings.map((ds, i) => {
                   const dayTotal = allocations
@@ -1153,6 +1170,9 @@ export function AllocationGridContent({
                     .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
                     .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
                   const hasFracActivity = fracNeedsTotal > 0;
+                  const collapsedSurplus = Math.max(dayTotal, nightTotal) - fracNeedsTotal;
+                  const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                    hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
                   return (
                     <td
                       key={i}
@@ -1160,26 +1180,34 @@ export function AllocationGridContent({
                       style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
                       data-testid={`cell-surplus-${ds}`}
                     >
-                      {(["day", "night"] as const).map((shift) => {
-                        const shiftTotal = shift === "day" ? dayTotal : nightTotal;
-                        const surplus = shiftTotal - fracNeedsTotal;
-                        const label = shift === "day" ? "D" : "N";
-                        return (
-                          <div
-                            key={shift}
-                            className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
-                              hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                              hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                              "text-muted-foreground"
-                            }`}
-                          >
-                            <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                            <span className="flex-1 text-center">
-                              {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
-                            </span>
-                          </div>
-                        );
-                      })}
+                      {surplusExpanded ? (
+                        (["day", "night"] as const).map((shift) => {
+                          const shiftTotal = shift === "day" ? dayTotal : nightTotal;
+                          const surplus = shiftTotal - fracNeedsTotal;
+                          const label = shift === "day" ? "D" : "N";
+                          return (
+                            <div
+                              key={shift}
+                              className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
+                                hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                                hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                                "text-muted-foreground"
+                              }`}
+                            >
+                              <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                              <span className="flex-1 text-center">
+                                {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
+                          <span className="text-center">
+                            {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
+                          </span>
+                        </div>
+                      )}
                     </td>
                   );
                 })}
