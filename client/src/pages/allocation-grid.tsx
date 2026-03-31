@@ -76,6 +76,15 @@ export function AllocationGridContent({
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const [totalsExpanded, setTotalsExpanded] = useState(false);
   const [surplusExpanded, setSurplusExpanded] = useState(false);
+  const [expandedFracDn, setExpandedFracDn] = useState<Set<number>>(new Set());
+
+  const toggleFracDn = (fracJobId: number) => {
+    setExpandedFracDn(prev => {
+      const next = new Set(prev);
+      next.has(fracJobId) ? next.delete(fracJobId) : next.add(fracJobId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const el = containerRef.current;
@@ -855,6 +864,7 @@ export function AllocationGridContent({
 
               const uniqueHaulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) || [];
 
+              const isDnExpanded = expandedFracDn.has(schedule.fracJobId);
               return (
                 <tbody key={schedule.id}>
                   <tr className="bg-muted/40">
@@ -864,6 +874,15 @@ export function AllocationGridContent({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
+                          <button
+                            className="shrink-0 flex items-center text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none"
+                            onClick={() => toggleFracDn(schedule.fracJobId)}
+                            aria-expanded={isDnExpanded}
+                            aria-label={isDnExpanded ? `Collapse D/N for ${frac.padName}` : `Expand D/N for ${frac.padName}`}
+                            data-testid={`button-dn-toggle-${frac.id}`}
+                          >
+                            {isDnExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          </button>
                           {lane && (
                             <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: lane.color }} />
                           )}
@@ -901,10 +920,31 @@ export function AllocationGridContent({
                       }
                       const dayTotal = getShiftTotalForFracDay(schedule.fracJobId, ds, "day");
                       const nightTotal = getShiftTotalForFracDay(schedule.fracJobId, ds, "night");
-                      const total = dayTotal + nightTotal;
                       const needed = getEffectiveTrucksForDate(schedule, ds);
                       const dayDiff = dayTotal - needed;
                       const nightDiff = nightTotal - needed;
+                      if (!isDnExpanded) {
+                        const collapsedTotal = Math.max(dayTotal, nightTotal);
+                        const collapsedDiff = collapsedTotal - needed;
+                        return (
+                          <td
+                            key={i}
+                            className="border-b border-r p-0 cursor-pointer"
+                            style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                            data-testid={`cell-frac-total-${frac.id}-${ds}`}
+                            onClick={() => toggleFracDn(schedule.fracJobId)}
+                          >
+                            <div className={`flex items-center justify-center py-1 text-xs font-semibold ${getCellColor(collapsedTotal, needed)}`}>
+                              <span className="flex-1 text-center">{collapsedTotal > 0 ? collapsedTotal : ""}</span>
+                              {collapsedDiff !== 0 && collapsedTotal > 0 && (
+                                <span className={`text-[8px] font-normal pr-0.5 ${collapsedDiff < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                                  {collapsedDiff > 0 ? `+${collapsedDiff}` : collapsedDiff}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      }
                       return (
                         <td
                           key={i}
@@ -1049,6 +1089,23 @@ export function AllocationGridContent({
                               </div>
                             );
                           };
+
+                          if (!isDnExpanded) {
+                            const collapsedTrucks = Math.max(dayTrucks, nightTrucks);
+                            return (
+                              <td
+                                key={i}
+                                className="border-b border-r p-0 relative cursor-pointer"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                                onClick={() => toggleFracDn(schedule.fracJobId)}
+                                data-testid={`cell-hauler-collapsed-${schedule.fracJobId}-${haulerId}-${ds}`}
+                              >
+                                <div className="flex items-center justify-center py-1 hover:bg-accent/50">
+                                  <span className="text-xs text-muted-foreground text-center">{collapsedTrucks > 0 ? collapsedTrucks : ""}</span>
+                                </div>
+                              </td>
+                            );
+                          }
 
                           return (
                             <td
