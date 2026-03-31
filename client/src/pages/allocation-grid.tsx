@@ -1078,15 +1078,19 @@ export function AllocationGridContent({
             <tbody>
               <tr className="bg-muted/30">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r px-2 py-1 font-semibold text-sm cursor-pointer select-none"
+                  className="sticky left-0 z-10 bg-muted border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-totals"
-                  onClick={() => setTotalsExpanded(v => !v)}
                 >
-                  <div className="flex items-center gap-1">
+                  <button
+                    className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onClick={() => setTotalsExpanded(v => !v)}
+                    aria-expanded={totalsExpanded}
+                    aria-label={totalsExpanded ? "Collapse Hauler Totals" : "Expand Hauler Totals"}
+                  >
                     {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
                     Hauler Totals
-                  </div>
+                  </button>
                 </td>
                 {dateStrings.map((ds, i) => {
                   const dayTotal = allocations
@@ -1149,15 +1153,19 @@ export function AllocationGridContent({
               </tr>
               <tr className="bg-muted/10">
                 <td
-                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r px-2 py-1 font-semibold text-sm cursor-pointer select-none"
+                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
                   style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
                   data-testid="text-hauler-surplus"
-                  onClick={() => setSurplusExpanded(v => !v)}
                 >
-                  <div className="flex items-center gap-1">
+                  <button
+                    className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onClick={() => setSurplusExpanded(v => !v)}
+                    aria-expanded={surplusExpanded}
+                    aria-label={surplusExpanded ? "Collapse Hauler Surplus" : "Expand Hauler Surplus"}
+                  >
                     {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
                     Hauler Surplus
-                  </div>
+                  </button>
                 </td>
                 {dateStrings.map((ds, i) => {
                   const dayTotal = allocations
