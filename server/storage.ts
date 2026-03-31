@@ -60,6 +60,7 @@ export interface IStorage {
   updateAllocation(id: number, allocation: Partial<InsertAllocationBlock>): Promise<AllocationBlock | undefined>;
   deleteAllocation(id: number): Promise<void>;
   deleteAllocationsByScenario(scenarioId: number): Promise<void>;
+  shiftAllocationsForFracJob(scenarioId: number, fracJobId: number, daysDelta: number): Promise<void>;
 
   getPresets(): Promise<Preset[]>;
   getPresetsByType(type: string): Promise<Preset[]>;
@@ -244,6 +245,24 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteAllocationsByScenario(scenarioId: number): Promise<void> {
     await db.delete(allocationBlocks).where(eq(allocationBlocks.scenarioId, scenarioId));
+  }
+  async shiftAllocationsForFracJob(scenarioId: number, fracJobId: number, daysDelta: number): Promise<void> {
+    if (daysDelta === 0) return;
+    const blocks = await db.select().from(allocationBlocks).where(
+      and(eq(allocationBlocks.scenarioId, scenarioId), eq(allocationBlocks.fracJobId, fracJobId))
+    );
+    for (const block of blocks) {
+      const newStart = new Date(block.startDate);
+      newStart.setDate(newStart.getDate() + daysDelta);
+      const newEnd = new Date(block.endDate);
+      newEnd.setDate(newEnd.getDate() + daysDelta);
+      await db.update(allocationBlocks)
+        .set({
+          startDate: newStart.toISOString().split("T")[0],
+          endDate: newEnd.toISOString().split("T")[0],
+        })
+        .where(eq(allocationBlocks.id, block.id));
+    }
   }
 
   async getPresets(): Promise<Preset[]> {

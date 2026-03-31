@@ -325,7 +325,7 @@ export async function registerRoutes(
       const data = await storage.updateSchedule(scheduleId, validated);
       if (!data) return res.status(404).json({ message: "Not found" });
 
-      let cascadedSchedules: Array<{ id: number; plannedStartDate: string; plannedEndDate: string }> = [];
+      let cascadedSchedules: Array<{ id: number; fracJobId: number; oldPlannedStartDate: string; newPlannedStartDate: string; plannedStartDate: string; plannedEndDate: string }> = [];
       if (validated.plannedEndDate && validated.plannedEndDate > oldSchedule.plannedEndDate) {
         cascadedSchedules = await runLaneCascadeAfterEndDateExtend(
           storage,
@@ -335,6 +335,14 @@ export async function registerRoutes(
           validated.plannedEndDate,
           data.transitionDaysAfter ?? 0
         );
+        for (const cascaded of cascadedSchedules) {
+          const oldStart = new Date(cascaded.oldPlannedStartDate);
+          const newStart = new Date(cascaded.newPlannedStartDate);
+          const daysDelta = Math.round((newStart.getTime() - oldStart.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysDelta !== 0) {
+            await storage.shiftAllocationsForFracJob(oldSchedule.scenarioId, cascaded.fracJobId, daysDelta);
+          }
+        }
       }
 
       res.json({ ...data, cascadedSchedules });

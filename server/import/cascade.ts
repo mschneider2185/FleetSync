@@ -2,6 +2,9 @@ import type { IStorage } from "../storage";
 
 export interface CascadedSchedule {
   id: number;
+  fracJobId: number;
+  oldPlannedStartDate: string;
+  newPlannedStartDate: string;
   plannedStartDate: string;
   plannedEndDate: string;
 }
@@ -55,12 +58,21 @@ export async function runLaneCascadeAfterEndDateExtend(
     const newEndDate = new Date(newStartDate.getTime() + durationMs);
     const newEnd = newEndDate.toISOString().split("T")[0];
 
+    const oldStart = downstream.plannedStartDate;
+
     await storage.updateSchedule(downstream.id, {
       plannedStartDate: newStart,
       plannedEndDate: newEnd,
     });
 
-    cascadedSchedules.push({ id: downstream.id, plannedStartDate: newStart, plannedEndDate: newEnd });
+    cascadedSchedules.push({
+      id: downstream.id,
+      fracJobId: downstream.fracJobId,
+      oldPlannedStartDate: oldStart,
+      newPlannedStartDate: newStart,
+      plannedStartDate: newStart,
+      plannedEndDate: newEnd,
+    });
 
     prevEnd = newEnd;
     prevTransition = downstream.transitionDaysAfter || 0;
