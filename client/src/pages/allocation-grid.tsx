@@ -828,7 +828,7 @@ export function AllocationGridContent({
                 <col key={i} style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} />
               ))}
             </colgroup>
-            <thead className="sticky top-0 z-20">
+            <thead className="sticky top-0 z-20 bg-background">
               {(showTotals ?? false) && !isStandalone && (
                 <>
                   <tr className="bg-muted/30">
