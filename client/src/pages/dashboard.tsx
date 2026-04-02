@@ -288,7 +288,7 @@ function TotalsStrip({ startDate, daysVisible, scrollRef }: { startDate: Date; d
   const [surplusExpanded, setSurplusExpanded] = useState(false);
 
   return (
-    <div ref={scrollRef} className="shrink-0 overflow-x-auto border-b bg-muted/20" data-testid="totals-strip">
+    <div ref={scrollRef} className="shrink-0 overflow-x-auto border-b bg-muted/20 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }} data-testid="totals-strip">
       <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
         <tbody>
           <tr className="bg-muted/30">
