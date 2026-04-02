@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Split } from "lucide-react";
-import type { Hauler, AllocationBlock } from "@shared/schema";
+import type { Hauler, AllocationBlock, ScenarioFracSchedule } from "@shared/schema";
 
 const CAPACITY_DAYS = 14;
 
@@ -34,6 +34,24 @@ export default function Haulers() {
     enabled: !!activeScenarioId,
   });
 
+  const { data: schedules = [] } = useQuery<ScenarioFracSchedule[]>({
+    queryKey: ["/api/scenarios", activeScenarioId, "schedules"],
+    queryFn: async () => {
+      if (!activeScenarioId) return [];
+      const res = await fetch(`/api/scenarios/${activeScenarioId}/schedules`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!activeScenarioId,
+  });
+
+  const completedFracJobIds = useMemo(() => {
+    return new Set(schedules.filter(s => s.status === "complete").map(s => s.fracJobId));
+  }, [schedules]);
+
+  const activeAllocations = useMemo(() => {
+    return allocations.filter(a => !completedFracJobIds.has(a.fracJobId));
+  }, [allocations, completedFracJobIds]);
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/haulers/${id}`),
     onSuccess: () => {
@@ -47,9 +65,24 @@ export default function Haulers() {
     [capacityStartDate]
   );
 
-  const getHaulerTotalForDay = (haulerId: number, dateStr: string) =>
-    allocations.filter(a => a.haulerId === haulerId && a.startDate <= dateStr && a.endDate >= dateStr)
-      .reduce((sum, a) => sum + a.trucksPerShift, 0);
+  const getHaulerTotalForDay = (haulerId: number, dateStr: string) => {
+    const relevant = activeAllocations.filter(
+      a => a.haulerId === haulerId && a.startDate <= dateStr && a.endDate >= dateStr
+    );
+    let dayTotal = 0;
+    let nightTotal = 0;
+    for (const a of relevant) {
+      if (a.shift === "day") {
+        dayTotal += a.trucksPerShift;
+      } else if (a.shift === "night") {
+        nightTotal += a.trucksPerShift;
+      } else {
+        dayTotal += a.trucksPerShift;
+        nightTotal += a.trucksPerShift;
+      }
+    }
+    return Math.max(dayTotal, nightTotal);
+  };
 
   const today = format(new Date(), "yyyy-MM-dd");
 

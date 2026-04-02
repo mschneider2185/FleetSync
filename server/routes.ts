@@ -463,6 +463,11 @@ export async function registerRoutes(
     const maxCap = hauler.defaultMaxTrucksPerShift;
     const exceptions = await storage.getCapacityExceptions(haulerId);
     const allAllocations = await storage.getAllocationsByScenario(scenarioId);
+    const schedules = await storage.getSchedulesByScenario(scenarioId);
+    const completedFracJobIds = new Set(
+      schedules.filter(s => s.status === "complete").map(s => s.fracJobId)
+    );
+    const activeAllocations = allAllocations.filter(a => !completedFracJobIds.has(a.fracJobId));
 
     const effectiveShift = toShift(shift);
 
@@ -478,7 +483,7 @@ export async function registerRoutes(
 
       for (const checkShift of shiftsToCheck) {
         let channelTotal = trucksPerShift;
-        for (const a of allAllocations) {
+        for (const a of activeAllocations) {
           if (a.haulerId !== haulerId) continue;
           if (excludeAllocId && a.id === excludeAllocId) continue;
           if (a.startDate <= ds && a.endDate >= ds) {
@@ -955,6 +960,11 @@ export async function registerRoutes(
       storage.getFracJobs(),
     ]);
 
+    const completedFracJobIds = new Set(
+      schedules.filter(s => s.status === "complete").map(s => s.fracJobId)
+    );
+    const activeAllocations = allocations.filter(a => !completedFracJobIds.has(a.fracJobId));
+
     const conflicts: Array<{
       type: "hauler_over_capacity" | "frac_under_supplied" | "frac_over_supplied" | "hauler_split_warning";
       date: string;
@@ -963,8 +973,10 @@ export async function registerRoutes(
       detail: string;
     }> = [];
 
+    const activeSchedules = schedules.filter(s => s.status !== "complete");
+
     const allDates = new Set<string>();
-    schedules.forEach(s => {
+    activeSchedules.forEach(s => {
       let d = new Date(s.plannedStartDate);
       const end = new Date(s.plannedEndDate);
       while (d <= end) {
@@ -977,7 +989,7 @@ export async function registerRoutes(
     const haulerMap = new Map(allHaulers.map(h => [h.id, h]));
 
     const haulerExceptionsMap = new Map<number, Awaited<ReturnType<typeof storage.getCapacityExceptions>>>();
-    const uniqueHaulerIds = new Set(allocations.map(a => a.haulerId));
+    const uniqueHaulerIds = new Set(activeAllocations.map(a => a.haulerId));
     await Promise.all(
       Array.from(uniqueHaulerIds).map(async (hId) => {
         const exceptions = await storage.getCapacityExceptions(hId);
@@ -990,7 +1002,7 @@ export async function registerRoutes(
       const haulerAssignments = new Map<number, { total: number; fracs: number[]; fracTrucks: Map<number, number> }>();
       const fracAssignments = new Map<number, { total: number; haulerTrucks: Map<number, number> }>();
 
-      for (const alloc of allocations) {
+      for (const alloc of activeAllocations) {
         if (alloc.startDate <= dateStr && alloc.endDate >= dateStr) {
           const ha = haulerAssignments.get(alloc.haulerId) || { total: 0, fracs: [] as number[], fracTrucks: new Map<number, number>() };
           ha.total += alloc.trucksPerShift;
@@ -1044,7 +1056,7 @@ export async function registerRoutes(
         }
       });
 
-      for (const schedule of schedules) {
+      for (const schedule of activeSchedules) {
         if (schedule.plannedStartDate <= dateStr && schedule.plannedEndDate >= dateStr) {
           const frac = fracMap.get(schedule.fracJobId);
           if (!frac) continue;
