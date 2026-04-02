@@ -1133,7 +1133,7 @@ export function AllocationGridContent({
           </table>
         </div>
         {(showTotals ?? isStandalone) && (
-        <div className="shrink-0 border-t bg-muted/20" data-testid="totals-strip">
+        <div className={`shrink-0 bg-muted/20${!isStandalone ? " order-first border-b" : " border-t"}`} data-testid="totals-strip">
           <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
             <tbody>
               <tr className="bg-muted/30">
