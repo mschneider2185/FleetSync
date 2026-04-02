@@ -56,6 +56,7 @@ interface AllocationGridContentProps {
   selectedDate?: string | null;
   onDateSelect?: (dateStr: string) => void;
   outerScrollRef?: RefObject<HTMLDivElement>;
+  showTotals?: boolean;
 }
 
 export function AllocationGridContent({
@@ -65,6 +66,7 @@ export function AllocationGridContent({
   selectedDate: selectedDateProp,
   onDateSelect,
   outerScrollRef,
+  showTotals,
 }: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
@@ -1130,7 +1132,7 @@ export function AllocationGridContent({
 
           </table>
         </div>
-        {isStandalone && (
+        {(showTotals ?? isStandalone) && (
         <div className="shrink-0 border-t bg-muted/20" data-testid="totals-strip">
           <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
             <tbody>

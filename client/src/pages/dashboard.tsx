@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useRef, useCallback, useEffect, type RefObject } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { startOfDay, parseISO } from "date-fns";
 import { GanttChart } from "@/components/gantt-chart";
 import { FracDetailPanel } from "@/components/frac-detail-panel";
@@ -14,8 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, AlertTriangle, Pencil, Trash2, Route, ChevronDown, ChevronRight, ChevronUp, Truck, Users, Grid3X3, Eye, EyeOff, X } from "lucide-react";
-import { AllocationGridContent, useAllocationTotalsData } from "@/pages/allocation-grid";
-import { getEffectiveTrucksForDate } from "@shared/schema";
+import { AllocationGridContent } from "@/pages/allocation-grid";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -279,158 +278,6 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
   );
 }
 
-const COL_WIDTH = 56;
-const LABEL_WIDTH = 220;
-
-function TotalsStrip({ startDate, daysVisible, scrollRef }: { startDate: Date; daysVisible: number; scrollRef?: RefObject<HTMLDivElement> }) {
-  const { allocations, validSchedules, dateStrings } = useAllocationTotalsData(startDate, daysVisible);
-  const [totalsExpanded, setTotalsExpanded] = useState(false);
-  const [surplusExpanded, setSurplusExpanded] = useState(false);
-
-  return (
-    <div ref={scrollRef} className="shrink-0 overflow-x-auto border-b bg-muted/20 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }} data-testid="totals-strip">
-      <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
-        <tbody>
-          <tr className="bg-muted/30">
-            <td
-              className="sticky left-0 z-10 bg-muted border-r p-0 font-semibold text-xs text-muted-foreground whitespace-nowrap"
-              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-              data-testid="text-hauler-totals"
-            >
-              <button
-                className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => setTotalsExpanded(v => !v)}
-                aria-expanded={totalsExpanded}
-                aria-label={totalsExpanded ? "Collapse Hauler Totals" : "Expand Hauler Totals"}
-              >
-                {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                Hauler Totals
-              </button>
-            </td>
-            {dateStrings.map((ds, i) => {
-              const dayTotal = allocations
-                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                .reduce((sum, a) => sum + a.trucksPerShift, 0);
-              const nightTotal = allocations
-                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                .reduce((sum, a) => sum + a.trucksPerShift, 0);
-              const collapsed = Math.max(dayTotal, nightTotal);
-              return (
-                <td key={i} className="border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-total-${ds}`}>
-                  {totalsExpanded ? (
-                    (["day", "night"] as const).map((shift) => {
-                      const val = shift === "day" ? dayTotal : nightTotal;
-                      const label = shift === "day" ? "D" : "N";
-                      return (
-                        <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
-                          <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                          <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="flex items-center justify-center py-1 text-xs font-semibold">
-                      <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
-                    </div>
-                  )}
-                </td>
-              );
-            })}
-          </tr>
-          <tr className="bg-muted/20">
-            <td
-              className="sticky left-0 z-10 bg-muted border-r px-3 py-1 font-semibold text-xs text-muted-foreground whitespace-nowrap"
-              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-              data-testid="text-frac-needs-total"
-            >
-              Frac Needs Total
-            </td>
-            {dateStrings.map((ds, i) => {
-              const fracNeedsTotal = validSchedules
-                .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-              return (
-                <td
-                  key={i}
-                  className="border-r text-center text-xs font-medium py-1 text-muted-foreground"
-                  style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                  data-testid={`strip-frac-needs-${ds}`}
-                >
-                  {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
-                </td>
-              );
-            })}
-          </tr>
-          <tr className="bg-muted/10">
-            <td
-              className="sticky left-0 z-10 bg-muted border-t border-t-border border-r p-0 font-semibold text-xs whitespace-nowrap"
-              style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-              data-testid="text-hauler-surplus"
-            >
-              <button
-                className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => setSurplusExpanded(v => !v)}
-                aria-expanded={surplusExpanded}
-                aria-label={surplusExpanded ? "Collapse Hauler Surplus" : "Expand Hauler Surplus"}
-              >
-                {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                Hauler Surplus
-              </button>
-            </td>
-            {dateStrings.map((ds, i) => {
-              const dayTotal = allocations
-                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                .reduce((sum, a) => sum + a.trucksPerShift, 0);
-              const nightTotal = allocations
-                .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                .reduce((sum, a) => sum + a.trucksPerShift, 0);
-              const fracNeedsTotal = validSchedules
-                .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-              const hasFracActivity = fracNeedsTotal > 0;
-              const collapsedSurplus = Math.max(dayTotal, nightTotal) - fracNeedsTotal;
-              const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
-              return (
-                <td key={i} className="border-t border-t-border border-r p-0" style={{ width: COL_WIDTH, minWidth: COL_WIDTH }} data-testid={`strip-surplus-${ds}`}>
-                  {surplusExpanded ? (
-                    (["day", "night"] as const).map((shift) => {
-                      const shiftTotal = shift === "day" ? dayTotal : nightTotal;
-                      const surplus = shiftTotal - fracNeedsTotal;
-                      const label = shift === "day" ? "D" : "N";
-                      return (
-                        <div
-                          key={shift}
-                          className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
-                            hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                            hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                            "text-muted-foreground"
-                          }`}
-                        >
-                          <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                          <span className="flex-1 text-center">
-                            {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
-                      <span className="text-center">
-                        {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
-                      </span>
-                    </div>
-                  )}
-                </td>
-              );
-            })}
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
@@ -449,37 +296,6 @@ export default function Dashboard() {
   const [splitPercent, setSplitPercent] = useState(50);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
-  const totalsScrollRef = useRef<HTMLDivElement>(null);
-  const gridOuterScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncingScroll = useRef(false);
-
-  useEffect(() => {
-    const totalsEl = totalsScrollRef.current;
-    const gridEl = gridOuterScrollRef.current;
-    if (!totalsEl || !gridEl) return;
-
-    const syncFromTotals = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      gridEl.scrollLeft = totalsEl.scrollLeft;
-      isSyncingScroll.current = false;
-    };
-
-    const syncFromGrid = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      totalsEl.scrollLeft = gridEl.scrollLeft;
-      isSyncingScroll.current = false;
-    };
-
-    totalsEl.addEventListener("scroll", syncFromTotals);
-    gridEl.addEventListener("scroll", syncFromGrid);
-
-    return () => {
-      totalsEl.removeEventListener("scroll", syncFromTotals);
-      gridEl.removeEventListener("scroll", syncFromGrid);
-    };
-  });
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -764,9 +580,6 @@ export default function Dashboard() {
               {gridCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               Allocation Grid
             </button>
-            {!gridCollapsed && gridStartDate && gridDaysVisible && (
-              <TotalsStrip startDate={gridStartDate} daysVisible={gridDaysVisible} scrollRef={totalsScrollRef} />
-            )}
             {!gridCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
                 <AllocationGridContent
@@ -775,7 +588,7 @@ export default function Dashboard() {
                   externalDaysVisible={gridDaysVisible}
                   selectedDate={selectedDate}
                   onDateSelect={setSelectedDate}
-                  outerScrollRef={gridOuterScrollRef}
+                  showTotals
                 />
               </div>
             )}
