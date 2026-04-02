@@ -479,7 +479,7 @@ export default function Dashboard() {
       totalsEl.removeEventListener("scroll", syncFromTotals);
       gridEl.removeEventListener("scroll", syncFromGrid);
     };
-  });
+  }, [gridCollapsed]);
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
