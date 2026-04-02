@@ -817,7 +817,7 @@ export function AllocationGridContent({
         </div>
       ) : (
         <div ref={outerScrollRef} className="flex-1 overflow-x-auto flex flex-col min-h-0">
-        <div ref={gridScrollRef} className="flex-1 overflow-y-auto relative">
+        <div ref={gridScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
           <table
             className="border-collapse text-xs"
             style={{ tableLayout: "fixed", minWidth: tableWidth, width: tableWidth }}
