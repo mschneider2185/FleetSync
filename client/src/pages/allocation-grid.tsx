@@ -812,7 +812,8 @@ export function AllocationGridContent({
           </div>
         </div>
       ) : (
-        <div ref={gridScrollRef} className="flex-1 overflow-auto relative">
+        <div className="flex-1 overflow-x-auto flex flex-col min-h-0">
+        <div ref={gridScrollRef} className="flex-1 overflow-y-auto relative">
           <table
             className="border-collapse text-xs"
             style={{ tableLayout: "fixed", minWidth: tableWidth, width: tableWidth }}
@@ -1127,10 +1128,8 @@ export function AllocationGridContent({
 
           </table>
         </div>
-      )}
-
-      {isStandalone && activeSchedules.length > 0 && (
-        <div className="shrink-0 overflow-x-auto border-t bg-muted/20" data-testid="totals-strip">
+        {isStandalone && (
+        <div className="shrink-0 border-t bg-muted/20" data-testid="totals-strip">
           <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
             <tbody>
               <tr className="bg-muted/30">
@@ -1279,6 +1278,8 @@ export function AllocationGridContent({
               </tr>
             </tbody>
           </table>
+        </div>
+        )}
         </div>
       )}
 
