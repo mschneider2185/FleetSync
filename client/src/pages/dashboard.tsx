@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect, type RefObject } from "react";
 import { startOfDay, parseISO } from "date-fns";
 import { GanttChart } from "@/components/gantt-chart";
 import { FracDetailPanel } from "@/components/frac-detail-panel";
@@ -282,13 +282,13 @@ function ConflictSheet({ open, onOpenChange, hardConflicts, warnings }: {
 const COL_WIDTH = 56;
 const LABEL_WIDTH = 220;
 
-function TotalsStrip({ startDate, daysVisible }: { startDate: Date; daysVisible: number }) {
+function TotalsStrip({ startDate, daysVisible, scrollRef }: { startDate: Date; daysVisible: number; scrollRef?: RefObject<HTMLDivElement> }) {
   const { allocations, validSchedules, dateStrings } = useAllocationTotalsData(startDate, daysVisible);
   const [totalsExpanded, setTotalsExpanded] = useState(false);
   const [surplusExpanded, setSurplusExpanded] = useState(false);
 
   return (
-    <div className="shrink-0 overflow-x-auto border-b bg-muted/20" data-testid="totals-strip">
+    <div ref={scrollRef} className="shrink-0 overflow-x-auto border-b bg-muted/20" data-testid="totals-strip">
       <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
         <tbody>
           <tr className="bg-muted/30">
@@ -449,6 +449,37 @@ export default function Dashboard() {
   const [splitPercent, setSplitPercent] = useState(50);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
+  const totalsScrollRef = useRef<HTMLDivElement>(null);
+  const gridOuterScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  useEffect(() => {
+    const totalsEl = totalsScrollRef.current;
+    const gridEl = gridOuterScrollRef.current;
+    if (!totalsEl || !gridEl) return;
+
+    const syncFromTotals = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      gridEl.scrollLeft = totalsEl.scrollLeft;
+      isSyncingScroll.current = false;
+    };
+
+    const syncFromGrid = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      totalsEl.scrollLeft = gridEl.scrollLeft;
+      isSyncingScroll.current = false;
+    };
+
+    totalsEl.addEventListener("scroll", syncFromTotals);
+    gridEl.addEventListener("scroll", syncFromGrid);
+
+    return () => {
+      totalsEl.removeEventListener("scroll", syncFromTotals);
+      gridEl.removeEventListener("scroll", syncFromGrid);
+    };
+  });
 
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -734,7 +765,7 @@ export default function Dashboard() {
               Allocation Grid
             </button>
             {!gridCollapsed && gridStartDate && gridDaysVisible && (
-              <TotalsStrip startDate={gridStartDate} daysVisible={gridDaysVisible} />
+              <TotalsStrip startDate={gridStartDate} daysVisible={gridDaysVisible} scrollRef={totalsScrollRef} />
             )}
             {!gridCollapsed && (
               <div className="flex-1 min-h-0 overflow-hidden">
@@ -744,6 +775,7 @@ export default function Dashboard() {
                   externalDaysVisible={gridDaysVisible}
                   selectedDate={selectedDate}
                   onDateSelect={setSelectedDate}
+                  outerScrollRef={gridOuterScrollRef}
                 />
               </div>
             )}

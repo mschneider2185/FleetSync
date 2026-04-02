@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback, type RefObject } from "react";
 import { format, addDays, startOfDay, startOfWeek, startOfMonth, startOfQuarter } from "date-fns";
 import { ScenarioSelector } from "@/components/scenario-selector";
 import { AllocationDialog } from "@/components/allocation-dialog";
@@ -55,6 +55,7 @@ interface AllocationGridContentProps {
   externalDaysVisible?: number;
   selectedDate?: string | null;
   onDateSelect?: (dateStr: string) => void;
+  outerScrollRef?: RefObject<HTMLDivElement>;
 }
 
 export function AllocationGridContent({
@@ -63,6 +64,7 @@ export function AllocationGridContent({
   externalDaysVisible,
   selectedDate: selectedDateProp,
   onDateSelect,
+  outerScrollRef,
 }: AllocationGridContentProps) {
   const { activeScenarioId } = useScenario();
   const { toast } = useToast();
@@ -812,7 +814,7 @@ export function AllocationGridContent({
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto flex flex-col min-h-0">
+        <div ref={outerScrollRef} className="flex-1 overflow-x-auto flex flex-col min-h-0">
         <div ref={gridScrollRef} className="flex-1 overflow-y-auto relative">
           <table
             className="border-collapse text-xs"
