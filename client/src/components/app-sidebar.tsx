@@ -24,6 +24,49 @@ const navItems = [
   { title: "Import", url: "/import", icon: FileUp },
 ];
 
+function LogoMark() {
+  return (
+    <div
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        background: "var(--fs-navy-mid)",
+        border: "0.5px solid var(--fs-border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "var(--fs-font-body)",
+          fontSize: 13,
+          fontWeight: 700,
+          color: "white",
+          letterSpacing: -0.5,
+        }}
+      >
+        FS
+      </span>
+      <span
+        style={{
+          position: "absolute",
+          bottom: 5,
+          left: 5,
+          width: 10,
+          height: 2,
+          borderRadius: 2,
+          background: "var(--fs-magenta)",
+        }}
+      />
+    </div>
+  );
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
@@ -32,12 +75,14 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
-            <Truck className="w-5 h-5 text-primary" />
-          </div>
+          <LogoMark />
           <div>
-            <p className="text-sm font-semibold tracking-tight">FleetSync</p>
-            <p className="text-[11px] text-muted-foreground">Fleet Logistics</p>
+            <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.5, color: "white", lineHeight: 1.2 }}>
+              Fleet<span style={{ color: "var(--fs-magenta)" }}>S</span>ync
+            </p>
+            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "2.5px", color: "var(--fs-text-muted)", marginTop: 2 }}>
+              Operations platform
+            </p>
           </div>
         </div>
       </SidebarHeader>

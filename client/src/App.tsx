@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -16,6 +17,14 @@ import HaulersPage from "@/pages/haulers";
 import ImportPage from "@/pages/import";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const pageTitles: Record<string, string> = {
+  "/": "Gantt Schedule",
+  "/allocation-grid": "Allocation Grid",
+  "/frac-jobs": "Frac Jobs",
+  "/haulers": "Haulers",
+  "/import": "Import",
+};
+
 function Router() {
   return (
     <Switch>
@@ -30,10 +39,13 @@ function Router() {
 }
 
 function AuthenticatedApp() {
+  const [location] = useLocation();
   const style = {
     "--sidebar-width": "15rem",
     "--sidebar-width-icon": "3rem",
   };
+
+  const pageTitle = pageTitles[location] ?? "FleetSync";
 
   return (
     <ScenarioProvider>
@@ -41,8 +53,18 @@ function AuthenticatedApp() {
         <div className="flex h-screen w-full">
           <AppSidebar />
           <div className="flex flex-col flex-1 min-w-0">
-            <header className="flex items-center gap-2 p-2 border-b bg-background shrink-0">
+            <header
+              className="flex items-center gap-3 px-4 shrink-0"
+              style={{
+                height: 48,
+                borderBottom: "0.5px solid var(--fs-border)",
+                background: "var(--fs-navy)",
+              }}
+            >
               <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fs-text-muted)", letterSpacing: "0.3px" }}>
+                {pageTitle}
+              </span>
             </header>
             <main className="flex-1 overflow-hidden">
               <Router />
@@ -76,6 +98,10 @@ function AppContent() {
 }
 
 function App() {
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
