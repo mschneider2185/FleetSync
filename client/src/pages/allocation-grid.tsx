@@ -473,7 +473,13 @@ export function AllocationGridContent({
 
     const resetGuard = () => { isSavingRef.current = false; };
 
-    if (newValue === cell.originalValue) {
+    // No-op if value unchanged and an allocation already existed
+    if (newValue === cell.originalValue && cell.allocId !== null) {
+      resetGuard();
+      return;
+    }
+    // No-op if user left the input blank (clearing is handled by Clear Range)
+    if (editValue === "") {
       resetGuard();
       return;
     }
@@ -1177,6 +1183,8 @@ export function AllocationGridContent({
                             );
                           }
 
+                          const dayAlloc = getShiftAllocForDay(schedule.fracJobId, haulerId, ds, "day");
+                          const nightAlloc = getShiftAllocForDay(schedule.fracJobId, haulerId, ds, "night");
                           const dayTrucks = getShiftTrucksForDay(schedule.fracJobId, haulerId, ds, "day");
                           const nightTrucks = getShiftTrucksForDay(schedule.fracJobId, haulerId, ds, "night");
                           const isDayEditing = editingCell?.fracJobId === schedule.fracJobId && editingCell?.haulerId === haulerId && editingCell?.dateStr === ds && editingCell?.shift === "day";
@@ -1188,6 +1196,7 @@ export function AllocationGridContent({
 
                           const renderSubCell = (shift: "day" | "night") => {
                             const trucks = shift === "day" ? dayTrucks : nightTrucks;
+                            const hasAlloc = shift === "day" ? dayAlloc !== null : nightAlloc !== null;
                             const isEditing = shift === "day" ? isDayEditing : isNightEditing;
                             const inRange = shift === "day" ? dayInRange : nightInRange;
                             const inDrag = shift === "day" ? dayInDrag : nightInDrag;
@@ -1231,8 +1240,8 @@ export function AllocationGridContent({
                                 data-testid={`cell-hauler-${schedule.fracJobId}-${haulerId}-${ds}-${shift}`}
                               >
                                 <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                                <span className="text-xs text-muted-foreground flex-1 text-center">{trucks > 0 ? trucks : ""}</span>
-                                {trucks > 0 && !isDraggingRef.current && (
+                                <span className="text-xs text-muted-foreground flex-1 text-center">{hasAlloc ? trucks : ""}</span>
+                                {hasAlloc && !isDraggingRef.current && (
                                   <div
                                     className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-3 bg-primary/50 hover:bg-primary cursor-crosshair rounded-sm opacity-0 group-hover/hauler-row:opacity-100 transition-opacity"
                                     onMouseDown={(e) => handleDragStart(schedule.fracJobId, haulerId, ds, trucks, shift, e)}
