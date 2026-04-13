@@ -176,7 +176,9 @@ export const insertLaneSchema = createInsertSchema(lanes).omit({ id: true });
 export const insertScenarioSchema = createInsertSchema(scenarios).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertFracJobSchema = createInsertSchema(fracJobs).omit({ id: true, createdAt: true });
 export const insertScenarioFracScheduleSchema = createInsertSchema(scenarioFracSchedules).omit({ id: true });
-export const insertHaulerSchema = createInsertSchema(haulers).omit({ id: true });
+export const insertHaulerSchema = createInsertSchema(haulers).omit({ id: true }).extend({
+  isActive: z.boolean().optional(),
+});
 export const insertHaulerCapacityExceptionSchema = createInsertSchema(haulerCapacityExceptions).omit({ id: true });
 export const insertAllocationBlockSchema = createInsertSchema(allocationBlocks).omit({ id: true }).extend({
   shift: z.enum(["day", "night", "both"]).default("both"),
