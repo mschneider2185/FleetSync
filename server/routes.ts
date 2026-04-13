@@ -543,7 +543,11 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Not found" });
       if (!(await checkScenarioEditable(req, res, existing.scenarioId))) return;
       const effectiveShift = validated.shift ?? existing.shift ?? "both";
-      if (validated.startDate || validated.endDate) {
+      const overlapFieldChanged = !!(
+        validated.startDate || validated.endDate ||
+        validated.shift || validated.haulerId || validated.fracJobId || validated.scenarioId
+      );
+      if (overlapFieldChanged) {
         const overlapping = await storage.findOverlappingAllocations(
           validated.scenarioId ?? existing.scenarioId,
           validated.fracJobId ?? existing.fracJobId,

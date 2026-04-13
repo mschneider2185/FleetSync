@@ -69,19 +69,24 @@ export default function Haulers() {
     const relevant = activeAllocations.filter(
       a => a.haulerId === haulerId && a.startDate <= dateStr && a.endDate >= dateStr
     );
-    let dayTotal = 0;
-    let nightTotal = 0;
+    const byFrac = new Map<number, { day: number; night: number }>();
     for (const a of relevant) {
+      if (!byFrac.has(a.fracJobId)) byFrac.set(a.fracJobId, { day: 0, night: 0 });
+      const entry = byFrac.get(a.fracJobId)!;
       if (a.shift === "day") {
-        dayTotal += a.trucksPerShift;
+        entry.day += a.trucksPerShift;
       } else if (a.shift === "night") {
-        nightTotal += a.trucksPerShift;
+        entry.night += a.trucksPerShift;
       } else {
-        dayTotal += a.trucksPerShift;
-        nightTotal += a.trucksPerShift;
+        entry.day += a.trucksPerShift;
+        entry.night += a.trucksPerShift;
       }
     }
-    return Math.max(dayTotal, nightTotal);
+    let total = 0;
+    for (const { day, night } of byFrac.values()) {
+      total += Math.max(day, night);
+    }
+    return total;
   };
 
   const today = format(new Date(), "yyyy-MM-dd");

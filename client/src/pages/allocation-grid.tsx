@@ -854,13 +854,29 @@ export function AllocationGridContent({
                       </button>
                     </td>
                     {dateStrings.map((ds, i) => {
-                      const dayTotal = allocations
-                        .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                        .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                      const nightTotal = allocations
-                        .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                        .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                      const collapsed = Math.max(dayTotal, nightTotal);
+                      let dayTotal = 0;
+                      let nightTotal = 0;
+                      for (const schedule of activeSchedules) {
+                        const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
+                        for (const hId of haulerIds) {
+                          const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
+                          const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
+                          dayTotal += d;
+                          nightTotal += n;
+                        }
+                      }
+                      const collapsed = (() => {
+                        let sum = 0;
+                        for (const schedule of activeSchedules) {
+                          const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
+                          for (const hId of haulerIds) {
+                            const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
+                            const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
+                            sum += Math.max(d, n);
+                          }
+                        }
+                        return sum;
+                      })();
                       return (
                         <td
                           key={i}
