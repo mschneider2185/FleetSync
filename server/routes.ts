@@ -999,50 +999,81 @@ export async function registerRoutes(
 
     const allDatesArray = Array.from(allDates);
     for (const dateStr of allDatesArray) {
-      const haulerAssignments = new Map<number, { total: number; fracs: number[]; fracTrucks: Map<number, number> }>();
-      const fracAssignments = new Map<number, { total: number; haulerTrucks: Map<number, number> }>();
+      type ShiftKey = "day" | "night";
+      const SHIFTS: ShiftKey[] = ["day", "night"];
+
+      const haulerShiftAssignments = new Map<number, Record<ShiftKey, { total: number; fracs: number[]; fracTrucks: Map<number, number> }>>();
+      const fracShiftAssignments = new Map<number, Record<ShiftKey, { total: number; haulerTrucks: Map<number, number> }>>();
 
       for (const alloc of activeAllocations) {
         if (alloc.startDate <= dateStr && alloc.endDate >= dateStr) {
-          const ha = haulerAssignments.get(alloc.haulerId) || { total: 0, fracs: [] as number[], fracTrucks: new Map<number, number>() };
-          ha.total += alloc.trucksPerShift;
-          if (!ha.fracs.includes(alloc.fracJobId)) ha.fracs.push(alloc.fracJobId);
-          ha.fracTrucks.set(alloc.fracJobId, (ha.fracTrucks.get(alloc.fracJobId) || 0) + alloc.trucksPerShift);
-          haulerAssignments.set(alloc.haulerId, ha);
+          const allocShift = toShift(alloc.shift);
+          const shiftsForAlloc: ShiftKey[] = allocShift === "both" ? ["day", "night"] : [allocShift];
 
-          const fa = fracAssignments.get(alloc.fracJobId) || { total: 0, haulerTrucks: new Map<number, number>() };
-          fa.total += alloc.trucksPerShift;
-          fa.haulerTrucks.set(alloc.haulerId, (fa.haulerTrucks.get(alloc.haulerId) || 0) + alloc.trucksPerShift);
-          fracAssignments.set(alloc.fracJobId, fa);
+          if (!haulerShiftAssignments.has(alloc.haulerId)) {
+            haulerShiftAssignments.set(alloc.haulerId, {
+              day: { total: 0, fracs: [], fracTrucks: new Map() },
+              night: { total: 0, fracs: [], fracTrucks: new Map() },
+            });
+          }
+          const haulerEntry = haulerShiftAssignments.get(alloc.haulerId)!;
+
+          if (!fracShiftAssignments.has(alloc.fracJobId)) {
+            fracShiftAssignments.set(alloc.fracJobId, {
+              day: { total: 0, haulerTrucks: new Map() },
+              night: { total: 0, haulerTrucks: new Map() },
+            });
+          }
+          const fracEntry = fracShiftAssignments.get(alloc.fracJobId)!;
+
+          for (const s of shiftsForAlloc) {
+            const hsd = haulerEntry[s];
+            hsd.total += alloc.trucksPerShift;
+            if (!hsd.fracs.includes(alloc.fracJobId)) hsd.fracs.push(alloc.fracJobId);
+            hsd.fracTrucks.set(alloc.fracJobId, (hsd.fracTrucks.get(alloc.fracJobId) || 0) + alloc.trucksPerShift);
+
+            const fsd = fracEntry[s];
+            fsd.total += alloc.trucksPerShift;
+            fsd.haulerTrucks.set(alloc.haulerId, (fsd.haulerTrucks.get(alloc.haulerId) || 0) + alloc.trucksPerShift);
+          }
         }
       }
 
-      Array.from(haulerAssignments.entries()).forEach(([haulerId, assignment]) => {
+      Array.from(haulerShiftAssignments.entries()).forEach(([haulerId, shiftData]) => {
         const hauler = haulerMap.get(haulerId);
         if (!hauler) return;
         const exceptions = haulerExceptionsMap.get(haulerId) || [];
         const exception = exceptions.find(e => e.date === dateStr);
         const maxCap = exception ? (exception.maxTrucksPerShift ?? hauler.defaultMaxTrucksPerShift) : hauler.defaultMaxTrucksPerShift;
 
-        if (assignment.total > maxCap) {
-          const over = assignment.total - maxCap;
-          const breakdown = assignment.fracs.map((fId: number) => {
-            const frac = fracMap.get(fId);
-            const trucks = assignment.fracTrucks.get(fId) || 0;
-            return `${frac?.padName || `Frac #${fId}`}: ${trucks}`;
-          }).join(", ");
-          const capSource = exception ? `exception capacity ${maxCap}` : `max capacity ${maxCap}`;
-          conflicts.push({
-            type: "hauler_over_capacity",
-            date: dateStr,
-            entityId: haulerId,
-            entityName: hauler.name,
-            detail: `Assigned ${assignment.total} trucks but ${capSource} (${over} over) [${breakdown}]`,
-          });
+        for (const s of SHIFTS) {
+          const assignment = shiftData[s];
+          if (assignment.total === 0) continue;
+
+          if (assignment.total > maxCap) {
+            const over = assignment.total - maxCap;
+            const breakdown = assignment.fracs.map((fId: number) => {
+              const frac = fracMap.get(fId);
+              const trucks = assignment.fracTrucks.get(fId) || 0;
+              return `${frac?.padName || `Frac #${fId}`}: ${trucks}`;
+            }).join(", ");
+            const capSource = exception ? `exception capacity ${maxCap}` : `max capacity ${maxCap}`;
+            conflicts.push({
+              type: "hauler_over_capacity",
+              date: dateStr,
+              entityId: haulerId,
+              entityName: hauler.name,
+              detail: `${s} shift: Assigned ${assignment.total} trucks but ${capSource} (${over} over) [${breakdown}]`,
+            });
+          }
         }
 
-        if (!hauler.splitAllowed && assignment.fracs.length > 1) {
-          const fracNames = assignment.fracs.map((fId: number) => {
+        const allFracs = new Set<number>();
+        for (const s of SHIFTS) {
+          shiftData[s].fracs.forEach(fId => allFracs.add(fId));
+        }
+        if (!hauler.splitAllowed && allFracs.size > 1) {
+          const fracNames = Array.from(allFracs).map((fId: number) => {
             const frac = fracMap.get(fId);
             return frac?.padName || `Frac #${fId}`;
           }).join(", ");
@@ -1051,7 +1082,7 @@ export async function registerRoutes(
             date: dateStr,
             entityId: haulerId,
             entityName: hauler.name,
-            detail: `Split across ${assignment.fracs.length} fracs (${fracNames}) but split not allowed`,
+            detail: `Split across ${allFracs.size} fracs (${fracNames}) but split not allowed`,
           });
         }
       });
@@ -1060,36 +1091,39 @@ export async function registerRoutes(
         if (schedule.plannedStartDate <= dateStr && schedule.plannedEndDate >= dateStr) {
           const frac = fracMap.get(schedule.fracJobId);
           if (!frac) continue;
-          const fracData = fracAssignments.get(schedule.fracJobId);
-          const assigned = fracData?.total || 0;
           const required = getEffectiveTrucksForDate(schedule, dateStr);
           const name = frac.padName || `Frac #${schedule.fracJobId}`;
+          const fracData = fracShiftAssignments.get(schedule.fracJobId);
 
-          const haulerBreakdown = fracData
-            ? Array.from(fracData.haulerTrucks.entries()).map(([hId, trucks]: [number, number]) => {
-                const h = haulerMap.get(hId);
-                return `${h?.name || `Hauler #${hId}`}: ${trucks}`;
-              }).join(", ")
-            : "none assigned";
+          for (const s of SHIFTS) {
+            const shiftAssigned = fracData?.[s]?.total || 0;
 
-          if (assigned < required) {
-            const short = required - assigned;
-            conflicts.push({
-              type: "frac_under_supplied",
-              date: dateStr,
-              entityId: schedule.fracJobId,
-              entityName: name,
-              detail: `Needs ${required} trucks but only ${assigned} assigned (${short} short) [${haulerBreakdown}]`,
-            });
-          } else if (assigned > required && required > 0) {
-            const over = assigned - required;
-            conflicts.push({
-              type: "frac_over_supplied",
-              date: dateStr,
-              entityId: schedule.fracJobId,
-              entityName: name,
-              detail: `Needs ${required} trucks but ${assigned} assigned (${over} over) [${haulerBreakdown}]`,
-            });
+            const haulerBreakdown = fracData?.[s]
+              ? Array.from(fracData[s].haulerTrucks.entries()).map(([hId, trucks]: [number, number]) => {
+                  const h = haulerMap.get(hId);
+                  return `${h?.name || `Hauler #${hId}`}: ${trucks}`;
+                }).join(", ")
+              : "none assigned";
+
+            if (shiftAssigned < required) {
+              const short = required - shiftAssigned;
+              conflicts.push({
+                type: "frac_under_supplied",
+                date: dateStr,
+                entityId: schedule.fracJobId,
+                entityName: name,
+                detail: `${s} shift: Needs ${required} trucks but only ${shiftAssigned} assigned (${short} short) [${haulerBreakdown}]`,
+              });
+            } else if (shiftAssigned > required && required > 0) {
+              const over = shiftAssigned - required;
+              conflicts.push({
+                type: "frac_over_supplied",
+                date: dateStr,
+                entityId: schedule.fracJobId,
+                entityName: name,
+                detail: `${s} shift: Needs ${required} trucks but ${shiftAssigned} assigned (${over} over) [${haulerBreakdown}]`,
+              });
+            }
           }
         }
       }
