@@ -835,170 +835,172 @@ export function AllocationGridContent({
               ))}
             </colgroup>
             <thead className="sticky top-0 z-20 bg-background">
-              {(showTotals ?? false) && !isStandalone && (
+              {((showTotals ?? false) && !isStandalone) || isStandalone ? (
                 <>
-                  <tr className="bg-muted/30">
-                    <td
-                      className="sticky left-0 z-30 bg-muted border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
-                      style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                      data-testid="text-hauler-totals"
-                    >
-                      <button
-                        className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onClick={() => setTotalsExpanded(v => !v)}
-                        aria-expanded={totalsExpanded}
-                        aria-label={totalsExpanded ? "Collapse Hauler Totals" : "Expand Hauler Totals"}
-                      >
-                        {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                        Hauler Totals
-                      </button>
-                    </td>
-                    {dateStrings.map((ds, i) => {
-                      let dayTotal = 0;
-                      let nightTotal = 0;
-                      for (const schedule of activeSchedules) {
-                        const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
-                        for (const hId of haulerIds) {
-                          const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
-                          const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
-                          dayTotal += d;
-                          nightTotal += n;
-                        }
-                      }
-                      const collapsed = (() => {
-                        let sum = 0;
-                        for (const schedule of activeSchedules) {
-                          const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
-                          for (const hId of haulerIds) {
-                            const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
-                            const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
-                            sum += Math.max(d, n);
-                          }
-                        }
-                        return sum;
-                      })();
-                      return (
-                        <td
-                          key={i}
-                          className="border-b border-r p-0"
-                          style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                          data-testid={`cell-total-${ds}`}
-                        >
-                          {totalsExpanded ? (
-                            (["day", "night"] as const).map((shift) => {
-                              const val = shift === "day" ? dayTotal : nightTotal;
-                              const label = shift === "day" ? "D" : "N";
-                              return (
-                                <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
-                                  <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                                  <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className="flex items-center justify-center py-1 text-xs font-semibold">
-                              <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr className="bg-muted/20">
-                    <td
-                      className="sticky left-0 z-30 bg-muted border-b border-r px-3 py-1 font-semibold text-sm text-muted-foreground"
-                      style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                      data-testid="text-frac-needs-total"
-                    >
-                      Frac Needs Total
-                    </td>
-                    {dateStrings.map((ds, i) => {
-                      const fracNeedsTotal = validSchedules
-                        .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                        .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                      return (
-                        <td
-                          key={i}
-                          className="border-b border-r text-center text-xs font-medium py-1 text-muted-foreground"
-                          style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                          data-testid={`cell-frac-needs-${ds}`}
-                        >
-                          {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr className="bg-muted/10">
-                    <td
-                      className="sticky left-0 z-30 bg-muted border-t-2 border-t-border border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
-                      style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                      data-testid="text-hauler-surplus"
-                    >
-                      <button
-                        className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onClick={() => setSurplusExpanded(v => !v)}
-                        aria-expanded={surplusExpanded}
-                        aria-label={surplusExpanded ? "Collapse Hauler Surplus" : "Expand Hauler Surplus"}
-                      >
-                        {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                        Hauler Surplus
-                      </button>
-                    </td>
-                    {dateStrings.map((ds, i) => {
-                      const dayTotal = allocations
-                        .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                        .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                      const nightTotal = allocations
-                        .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                        .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                      const fracNeedsTotal = validSchedules
-                        .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                        .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                      const hasFracActivity = fracNeedsTotal > 0;
-                      const collapsedSurplus = Math.max(dayTotal, nightTotal) - fracNeedsTotal;
-                      const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                        hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
-                      return (
-                        <td
-                          key={i}
-                          className="border-t-2 border-t-border border-b border-r p-0"
-                          style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                          data-testid={`cell-surplus-${ds}`}
-                        >
-                          {surplusExpanded ? (
-                            (["day", "night"] as const).map((shift) => {
-                              const shiftTotal = shift === "day" ? dayTotal : nightTotal;
-                              const surplus = shiftTotal - fracNeedsTotal;
-                              const label = shift === "day" ? "D" : "N";
-                              return (
-                                <div
-                                  key={shift}
-                                  className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
-                                    hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                                    hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                                    "text-muted-foreground"
-                                  }`}
-                                >
-                                  <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                                  <span className="flex-1 text-center">
-                                    {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
-                                  </span>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
-                              <span className="text-center">
-                                {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                  {(() => {
+                    const activeHaulerMaxSum = haulers
+                      .filter(h => h.isActive !== false)
+                      .reduce((sum, h) => sum + h.defaultMaxTrucksPerShift, 0);
+                    return (
+                      <>
+                        <tr className="bg-muted/30">
+                          <td
+                            className="sticky left-0 z-30 bg-muted border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
+                            style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                            data-testid="text-hauler-totals"
+                          >
+                            <button
+                              className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              onClick={() => setTotalsExpanded(v => !v)}
+                              aria-expanded={totalsExpanded}
+                              aria-label={totalsExpanded ? "Collapse Hauler Totals" : "Expand Hauler Totals"}
+                            >
+                              {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                              Hauler Totals
+                            </button>
+                          </td>
+                          {dateStrings.map((ds, i) => {
+                            let dayTotal = 0;
+                            let nightTotal = 0;
+                            for (const schedule of activeSchedules) {
+                              const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
+                              for (const hId of haulerIds) {
+                                const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
+                                const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
+                                dayTotal += d;
+                                nightTotal += n;
+                              }
+                            }
+                            const collapsed = (() => {
+                              let sum = 0;
+                              for (const schedule of activeSchedules) {
+                                const haulerIds = allHaulerIdsForFrac.get(schedule.fracJobId) ?? [];
+                                for (const hId of haulerIds) {
+                                  const d = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "day");
+                                  const n = getShiftTrucksForDay(schedule.fracJobId, hId, ds, "night");
+                                  sum += Math.max(d, n);
+                                }
+                              }
+                              return sum;
+                            })();
+                            return (
+                              <td
+                                key={i}
+                                className="border-b border-r p-0"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                                data-testid={`cell-total-${ds}`}
+                              >
+                                {totalsExpanded ? (
+                                  (["day", "night"] as const).map((shift) => {
+                                    const val = shift === "day" ? dayTotal : nightTotal;
+                                    const label = shift === "day" ? "D" : "N";
+                                    return (
+                                      <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
+                                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                                        <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="flex items-center justify-center py-1 text-xs font-semibold">
+                                    <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        <tr className="bg-muted/20">
+                          <td
+                            className="sticky left-0 z-30 bg-muted border-b border-r px-3 py-1 font-semibold text-sm text-muted-foreground"
+                            style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                            data-testid="text-frac-needs-total"
+                          >
+                            Frac Needs Total
+                          </td>
+                          {dateStrings.map((ds, i) => {
+                            const fracNeedsTotal = validSchedules
+                              .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+                              .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+                            return (
+                              <td
+                                key={i}
+                                className="border-b border-r text-center text-xs font-medium py-1 text-muted-foreground"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                                data-testid={`cell-frac-needs-${ds}`}
+                              >
+                                {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        <tr className="bg-muted/10">
+                          <td
+                            className="sticky left-0 z-30 bg-muted border-t-2 border-t-border border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
+                            style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
+                            data-testid="text-hauler-surplus"
+                          >
+                            <button
+                              className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              onClick={() => setSurplusExpanded(v => !v)}
+                              aria-expanded={surplusExpanded}
+                              aria-label={surplusExpanded ? "Collapse Hauler Surplus" : "Expand Hauler Surplus"}
+                            >
+                              {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                              Hauler Surplus
+                            </button>
+                          </td>
+                          {dateStrings.map((ds, i) => {
+                            const fracNeedsTotal = validSchedules
+                              .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
+                              .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
+                            const hasFracActivity = fracNeedsTotal > 0;
+                            const collapsedSurplus = activeHaulerMaxSum - fracNeedsTotal;
+                            const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                              hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
+                            return (
+                              <td
+                                key={i}
+                                className="border-t-2 border-t-border border-b border-r p-0"
+                                style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                                data-testid={`cell-surplus-${ds}`}
+                              >
+                                {surplusExpanded ? (
+                                  (["day", "night"] as const).map((shift) => {
+                                    const surplus = activeHaulerMaxSum - fracNeedsTotal;
+                                    const label = shift === "day" ? "D" : "N";
+                                    return (
+                                      <div
+                                        key={shift}
+                                        className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
+                                          hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                                          hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
+                                          "text-muted-foreground"
+                                        }`}
+                                      >
+                                        <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
+                                        <span className="flex-1 text-center">
+                                          {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
+                                        </span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
+                                    <span className="text-center">
+                                      {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </>
+                    );
+                  })()}
                 </>
-              )}
+              ) : null}
               <tr>
                 <th
                   className="sticky left-0 z-30 bg-background border-b border-r px-3 py-2 text-left font-medium text-muted-foreground"
@@ -1305,158 +1307,6 @@ export function AllocationGridContent({
 
           </table>
         </div>
-        {isStandalone && (
-        <div className="shrink-0 bg-muted/20 border-t" data-testid="totals-strip">
-          <table className="border-collapse" style={{ tableLayout: "fixed", minWidth: LABEL_WIDTH + COL_WIDTH * dateStrings.length }}>
-            <tbody>
-              <tr className="bg-muted/30">
-                <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
-                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                  data-testid="text-hauler-totals"
-                >
-                  <button
-                    className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => setTotalsExpanded(v => !v)}
-                    aria-expanded={totalsExpanded}
-                    aria-label={totalsExpanded ? "Collapse Hauler Totals" : "Expand Hauler Totals"}
-                  >
-                    {totalsExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                    Hauler Totals
-                  </button>
-                </td>
-                {dateStrings.map((ds, i) => {
-                  const dayTotal = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const nightTotal = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const collapsed = Math.max(dayTotal, nightTotal);
-                  return (
-                    <td
-                      key={i}
-                      className="border-b border-r p-0"
-                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                      data-testid={`cell-total-${ds}`}
-                    >
-                      {totalsExpanded ? (
-                        (["day", "night"] as const).map((shift) => {
-                          const val = shift === "day" ? dayTotal : nightTotal;
-                          const label = shift === "day" ? "D" : "N";
-                          return (
-                            <div key={shift} className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""}`}>
-                              <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                              <span className="flex-1 text-center">{val > 0 ? val : ""}</span>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="flex items-center justify-center py-1 text-xs font-semibold">
-                          <span className="text-center">{collapsed > 0 ? collapsed : ""}</span>
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr className="bg-muted/20">
-                <td
-                  className="sticky left-0 z-10 bg-muted border-b border-r px-3 py-1 font-semibold text-sm text-muted-foreground"
-                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                  data-testid="text-frac-needs-total"
-                >
-                  Frac Needs Total
-                </td>
-                {dateStrings.map((ds, i) => {
-                  const fracNeedsTotal = validSchedules
-                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                  return (
-                    <td
-                      key={i}
-                      className="border-b border-r text-center text-xs font-medium py-1 text-muted-foreground"
-                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                      data-testid={`cell-frac-needs-${ds}`}
-                    >
-                      {fracNeedsTotal > 0 ? fracNeedsTotal : ""}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr className="bg-muted/10">
-                <td
-                  className="sticky left-0 z-10 bg-muted border-t-2 border-t-border border-b border-r p-0 font-semibold text-sm whitespace-nowrap"
-                  style={{ width: LABEL_WIDTH, minWidth: LABEL_WIDTH }}
-                  data-testid="text-hauler-surplus"
-                >
-                  <button
-                    className="flex items-center gap-1 w-full px-2 py-1 text-left cursor-pointer select-none hover:bg-muted-foreground/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => setSurplusExpanded(v => !v)}
-                    aria-expanded={surplusExpanded}
-                    aria-label={surplusExpanded ? "Collapse Hauler Surplus" : "Expand Hauler Surplus"}
-                  >
-                    {surplusExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                    Hauler Surplus
-                  </button>
-                </td>
-                {dateStrings.map((ds, i) => {
-                  const dayTotal = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "day" || a.shift === "both" || !a.shift))
-                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const nightTotal = allocations
-                    .filter(a => a.startDate <= ds && a.endDate >= ds && (a.shift === "night" || a.shift === "both" || !a.shift))
-                    .reduce((sum, a) => sum + a.trucksPerShift, 0);
-                  const fracNeedsTotal = validSchedules
-                    .filter(s => s.plannedStartDate <= ds && s.plannedEndDate >= ds && (s.status === "active" || s.status === "planned" || s.status === "complete"))
-                    .reduce((sum, s) => sum + getEffectiveTrucksForDate(s, ds), 0);
-                  const hasFracActivity = fracNeedsTotal > 0;
-                  const collapsedSurplus = Math.max(dayTotal, nightTotal) - fracNeedsTotal;
-                  const collapsedColor = hasFracActivity && collapsedSurplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                    hasFracActivity && collapsedSurplus < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
-                  return (
-                    <td
-                      key={i}
-                      className="border-t-2 border-t-border border-b border-r p-0"
-                      style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                      data-testid={`cell-surplus-${ds}`}
-                    >
-                      {surplusExpanded ? (
-                        (["day", "night"] as const).map((shift) => {
-                          const shiftTotal = shift === "day" ? dayTotal : nightTotal;
-                          const surplus = shiftTotal - fracNeedsTotal;
-                          const label = shift === "day" ? "D" : "N";
-                          return (
-                            <div
-                              key={shift}
-                              className={`flex items-center justify-center py-0.5 text-xs font-semibold ${shift === "night" ? "border-t border-border/40" : ""} ${
-                                hasFracActivity && surplus > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                                hasFracActivity && surplus < 0 ? "text-red-600 dark:text-red-400" :
-                                "text-muted-foreground"
-                              }`}
-                            >
-                              <span className="text-[8px] text-muted-foreground/50 w-3 shrink-0 pl-0.5">{label}</span>
-                              <span className="flex-1 text-center">
-                                {hasFracActivity ? (surplus > 0 ? `+${surplus}` : surplus === 0 ? "0" : surplus) : ""}
-                              </span>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className={`flex items-center justify-center py-1 text-xs font-semibold ${collapsedColor}`}>
-                          <span className="text-center">
-                            {hasFracActivity ? (collapsedSurplus > 0 ? `+${collapsedSurplus}` : collapsedSurplus === 0 ? "0" : collapsedSurplus) : ""}
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        )}
         </div>
       )}
 
@@ -1578,6 +1428,7 @@ export function AllocationGridContent({
 export function useAllocationTotalsData(startDate: Date, daysVisible: number) {
   const { activeScenarioId } = useScenario();
   const { data: fracJobs = [] } = useQuery<FracJob[]>({ queryKey: ["/api/frac-jobs"] });
+  const { data: haulers = [] } = useQuery<Hauler[]>({ queryKey: ["/api/haulers"] });
   const fracJobIds = useMemo(() => new Set(fracJobs.map(f => f.id)), [fracJobs]);
 
   const { data: schedules = [] } = useQuery<ScenarioFracSchedule[]>({
@@ -1602,12 +1453,17 @@ export function useAllocationTotalsData(startDate: Date, daysVisible: number) {
 
   const validSchedules = useMemo(() => schedules.filter(s => fracJobIds.has(s.fracJobId)), [schedules, fracJobIds]);
 
+  const activeHaulerMaxSum = useMemo(() =>
+    haulers.filter(h => h.isActive !== false).reduce((sum, h) => sum + h.defaultMaxTrucksPerShift, 0),
+    [haulers]
+  );
+
   const dateStrings = useMemo(() =>
     Array.from({ length: daysVisible }, (_, i) => format(addDays(startDate, i), "yyyy-MM-dd")),
     [startDate, daysVisible]
   );
 
-  return { allocations, validSchedules, dateStrings };
+  return { allocations, validSchedules, dateStrings, activeHaulerMaxSum };
 }
 
 export default function AllocationGrid() {

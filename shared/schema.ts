@@ -61,6 +61,7 @@ export const haulers = pgTable("haulers", {
   notes: text("notes"),
   defaultMaxTrucksPerShift: integer("default_max_trucks_per_shift").notNull().default(10),
   defaultMinCommittedTrucksPerShift: integer("default_min_committed_trucks_per_shift").notNull().default(0),
+  isActive: boolean("is_active").default(true),
 });
 
 export const haulerCapacityExceptions = pgTable("hauler_capacity_exceptions", {

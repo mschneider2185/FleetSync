@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2, Split } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import type { Hauler, AllocationBlock, ScenarioFracSchedule } from "@shared/schema";
 
 const CAPACITY_DAYS = 14;
@@ -57,6 +58,14 @@ export default function Haulers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/haulers"] });
       toast({ title: "Hauler deleted" });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
+      apiRequest("PATCH", `/api/haulers/${id}`, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/haulers"] });
     },
   });
 
@@ -133,12 +142,22 @@ export default function Haulers() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {haulers.map(hauler => {
                   const totalAssignedToday = getHaulerTotalForDay(hauler.id, today);
+                  const isActive = hauler.isActive !== false;
                   return (
-                    <Card key={hauler.id} className="p-4" data-testid={`card-hauler-${hauler.id}`}>
+                    <Card
+                      key={hauler.id}
+                      className={`p-4 transition-opacity ${isActive ? "" : "opacity-50"}`}
+                      data-testid={`card-hauler-${hauler.id}`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1.5 flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold">{hauler.name}</span>
+                            {!isActive && (
+                              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                Inactive
+                              </Badge>
+                            )}
                             {hauler.splitAllowed && (
                               <Badge variant="secondary" className="text-[10px] gap-1">
                                 <Split className="w-3 h-3" />
@@ -157,6 +176,14 @@ export default function Haulers() {
                           )}
                         </div>
                         <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5 mr-1" title={isActive ? "Active" : "Inactive"}>
+                            <Switch
+                              checked={isActive}
+                              onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: hauler.id, isActive: checked })}
+                              data-testid={`switch-active-hauler-${hauler.id}`}
+                              aria-label={isActive ? "Mark as inactive" : "Mark as active"}
+                            />
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"
