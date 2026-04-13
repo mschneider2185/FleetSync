@@ -1,5 +1,6 @@
 import { useLocation, Link } from "wouter";
-import { BarChart3, Calendar, Truck, HardHat, FileUp, LogOut } from "lucide-react";
+import { BarChart3, Calendar, Truck, HardHat, FileUp, LogOut, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
   SidebarContent,
@@ -70,6 +71,7 @@ function LogoMark() {
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <Sidebar>
@@ -77,10 +79,10 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <LogoMark />
           <div>
-            <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.5, color: "white", lineHeight: 1.2 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: -0.5, color: "hsl(var(--sidebar-foreground))", lineHeight: 1.2 }}>
               Fleet<span style={{ color: "var(--fs-magenta)" }}>S</span>ync
             </p>
-            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "2.5px", color: "var(--fs-text-muted)", marginTop: 2 }}>
+            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "2.5px", color: "hsl(var(--muted-foreground))", marginTop: 2 }}>
               Operations platform
             </p>
           </div>
@@ -109,6 +111,17 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={toggleTheme}
+            data-testid="button-theme-toggle"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </Button>
+        </div>
         {user && (
           <div className="flex items-center gap-3">
             <Avatar className="w-8 h-8">

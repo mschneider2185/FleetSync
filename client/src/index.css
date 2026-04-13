@@ -30,55 +30,55 @@
   --fs-font-body:    'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --fs-font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 
-  /* ── Tailwind semantic tokens — dark/navy theme (FleetSync is dark-only) ── */
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  /* ── Light mode Tailwind semantic tokens ── */
+  --button-outline: rgba(0, 0, 0, 0.10);
+  --badge-outline: rgba(0, 0, 0, 0.05);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(0, 0, 0, 0.04);
+  --elevate-2: rgba(0, 0, 0, 0.09);
 
-  /* navy #0a1628 → HSL 216 60% 10% */
-  --background: 216 60% 10%;
-  /* #E8ECF2 → HSL 220 27% 93% */
-  --foreground: 220 27% 93%;
-  /* border ≈ rgba(255,255,255,0.08) on navy → very subtle */
-  --border: 216 30% 18%;
-  /* card / navy-mid #152238 → HSL 218 45% 15% */
-  --card: 218 45% 15%;
-  --card-foreground: 220 27% 93%;
-  --card-border: 216 30% 18%;
-  /* sidebar = navy-mid */
-  --sidebar: 218 45% 15%;
-  --sidebar-foreground: 220 27% 93%;
-  --sidebar-border: 216 30% 18%;
+  /* light blue-gray #F0F4FB ≈ HSL 220 40% 96% */
+  --background: 220 40% 96%;
+  /* dark navy #0a1628 → HSL 216 60% 10% */
+  --foreground: 216 60% 10%;
+  /* border ≈ rgba(0,0,0,0.08) */
+  --border: 220 20% 88%;
+  /* card = white → HSL 0 0% 100% */
+  --card: 0 0% 100%;
+  --card-foreground: 216 60% 10%;
+  --card-border: 220 20% 88%;
+  /* sidebar = white */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 216 60% 10%;
+  --sidebar-border: 220 20% 88%;
   /* magenta #E91E78 → HSL 333 82% 52% */
   --sidebar-primary: 333 82% 52%;
   --sidebar-primary-foreground: 0 0% 98%;
-  /* slate #1e2d45 → HSL 217 39% 19% */
-  --sidebar-accent: 217 39% 19%;
-  --sidebar-accent-foreground: 220 27% 93%;
+  /* light blue-gray accent */
+  --sidebar-accent: 220 30% 92%;
+  --sidebar-accent-foreground: 216 60% 10%;
   --sidebar-ring: 333 82% 52%;
-  /* popover = navy-mid */
-  --popover: 218 45% 15%;
-  --popover-foreground: 220 27% 93%;
-  --popover-border: 216 30% 18%;
+  /* popover = white */
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 60% 10%;
+  --popover-border: 220 20% 88%;
   /* primary = magenta */
   --primary: 333 82% 52%;
   --primary-foreground: 0 0% 98%;
-  /* secondary = slate */
-  --secondary: 217 39% 19%;
-  --secondary-foreground: 220 27% 93%;
-  /* muted = slate */
-  --muted: 217 39% 19%;
-  /* muted-foreground = #8A99B4 → HSL 220 18% 62% */
-  --muted-foreground: 220 18% 62%;
-  /* accent = slate */
-  --accent: 217 39% 19%;
-  --accent-foreground: 220 27% 93%;
+  /* secondary = light blue-gray */
+  --secondary: 220 30% 92%;
+  --secondary-foreground: 216 60% 10%;
+  /* muted = light gray */
+  --muted: 220 30% 92%;
+  /* muted-foreground = medium gray-navy */
+  --muted-foreground: 220 18% 45%;
+  /* accent = light blue-gray */
+  --accent: 220 30% 92%;
+  --accent-foreground: 216 60% 10%;
   /* destructive = #E24B4A */
   --destructive: 0 71% 59%;
   --destructive-foreground: 0 0% 98%;
-  --input: 216 30% 25%;
+  --input: 220 20% 88%;
   --ring: 333 82% 52%;
 
   /* chart colors */
@@ -121,7 +121,7 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
-/* .dark mirrors :root — FleetSync is dark-only, same values */
+/* .dark — the original FleetSync navy palette */
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);

@@ -1,5 +1,4 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ScenarioProvider } from "@/hooks/use-scenario";
 import { useAuth } from "@/hooks/use-auth";
+import { ThemeProvider } from "@/hooks/use-theme";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -57,12 +57,12 @@ function AuthenticatedApp() {
               className="flex items-center gap-3 px-4 shrink-0"
               style={{
                 height: 48,
-                borderBottom: "0.5px solid var(--fs-border)",
-                background: "var(--fs-navy)",
+                borderBottom: "0.5px solid hsl(var(--border))",
+                background: "hsl(var(--background))",
               }}
             >
               <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fs-text-muted)", letterSpacing: "0.3px" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--muted-foreground))", letterSpacing: "0.3px" }}>
                 {pageTitle}
               </span>
             </header>
@@ -98,17 +98,15 @@ function AppContent() {
 }
 
 function App() {
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <AppContent />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <AppContent />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 
