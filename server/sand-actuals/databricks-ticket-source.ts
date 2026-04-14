@@ -1,0 +1,336 @@
+import type { InsertIngestedTicket } from "@shared/schema";
+import type {
+  TicketSource,
+  TicketSourceFetchOptions,
+  TicketSourceFetchResult,
+} from "./ticket-source";
+
+type DatabricksColumn = { name: string };
+
+type DatabricksStatementResponse = {
+  statement_id?: string;
+  status?: {
+    state?: string;
+    error?: {
+      message?: string;
+    };
+  };
+  manifest?: {
+    schema?: {
+      columns?: DatabricksColumn[];
+    };
+  };
+  result?: {
+    data_array?: unknown[][];
+    next_chunk_internal_link?: string | null;
+  };
+};
+
+export class DatabricksTicketSource implements TicketSource {
+  public readonly name = "databricks";
+
+  private readonly host: string;
+  private readonly token: string;
+  private readonly warehouseId: string;
+  private readonly catalog?: string;
+  private readonly schema?: string;
+
+  constructor() {
+    this.host = requiredEnv("DATABRICKS_HOST");
+    this.token = requiredEnv("DATABRICKS_TOKEN");
+    this.warehouseId = requiredEnv("DATABRICKS_WAREHOUSE_ID");
+    this.catalog = process.env.DATABRICKS_CATALOG || undefined;
+    this.schema = process.env.DATABRICKS_SCHEMA || undefined;
+  }
+
+  async fetchTickets(
+    opts: TicketSourceFetchOptions,
+  ): Promise<TicketSourceFetchResult> {
+    const sql = buildSandTicketsSql(opts.lookbackHours);
+
+    const initial = await this.executeStatement(sql);
+    const completed = await this.pollUntilComplete(initial);
+
+    const rows = await this.collectRows(completed);
+    const tickets = rows.map(mapRowToIngestedTicket);
+
+    const lastSeenAt =
+      tickets
+        .map((t) =>
+          t.gpsDropoffCompletedAt ??
+          t.haulerDropoffCompletedAt ??
+          t.haulerServiceEndAt ??
+          t.gpsPickupCompletedAt ??
+          null,
+        )
+        .filter((d): d is Date => d instanceof Date)
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? undefined;
+
+    return {
+      tickets,
+      lastSeenAt,
+    };
+  }
+
+  private async executeStatement(sql: string): Promise<DatabricksStatementResponse> {
+    const response = await fetch(`${this.host}/api/2.0/sql/statements`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        warehouse_id: this.warehouseId,
+        statement: sql,
+        catalog: this.catalog,
+        schema: this.schema,
+        wait_timeout: "30s",
+        disposition: "INLINE",
+        format: "JSON_ARRAY",
+      }),
+    });
+
+    const raw = await response.text();
+    if (!response.ok) {
+      throw new Error(`Databricks statement submit failed: ${response.status} ${raw}`);
+    }
+
+    return JSON.parse(raw) as DatabricksStatementResponse;
+  }
+
+  private async pollUntilComplete(
+    current: DatabricksStatementResponse,
+  ): Promise<DatabricksStatementResponse> {
+    const statementId = current.statement_id;
+    if (!statementId) {
+      throw new Error("Databricks response missing statement_id");
+    }
+
+    for (let i = 0; i < 30; i++) {
+      const state = current.status?.state;
+
+      if (state === "SUCCEEDED") {
+        return current;
+      }
+
+      if (state === "FAILED" || state === "CANCELED" || state === "CLOSED") {
+        throw new Error(
+          `Databricks statement ${state}: ${current.status?.error?.message ?? "unknown error"}`,
+        );
+      }
+
+      await sleep(2000);
+
+      const response = await fetch(
+        `${this.host}/api/2.0/sql/statements/${statementId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+        },
+      );
+
+      const raw = await response.text();
+      if (!response.ok) {
+        throw new Error(`Databricks statement poll failed: ${response.status} ${raw}`);
+      }
+
+      current = JSON.parse(raw) as DatabricksStatementResponse;
+    }
+
+    throw new Error("Databricks statement timed out waiting for completion");
+  }
+
+  private async collectRows(
+    response: DatabricksStatementResponse,
+  ): Promise<Record<string, unknown>[]> {
+    const columns =
+      response.manifest?.schema?.columns?.map((c) => c.name) ??
+      response.result?.data_array?.[0]?.map((_v, i) => `col_${i}`) ??
+      [];
+
+    if (!columns.length) {
+      return [];
+    }
+
+    let rows = (response.result?.data_array ?? []).map((row) =>
+      arrayRowToObject(columns, row),
+    );
+
+    let next = response.result?.next_chunk_internal_link ?? null;
+
+    while (next) {
+      const chunkResponse = await fetch(`${this.host}${next}`, {
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+        },
+      });
+
+      const raw = await chunkResponse.text();
+      if (!chunkResponse.ok) {
+        throw new Error(`Databricks chunk fetch failed: ${chunkResponse.status} ${raw}`);
+      }
+
+      const chunk = JSON.parse(raw) as DatabricksStatementResponse;
+      const chunkRows = (chunk.result?.data_array ?? []).map((row) =>
+        arrayRowToObject(columns, row),
+      );
+
+      rows = rows.concat(chunkRows);
+      next = chunk.result?.next_chunk_internal_link ?? null;
+    }
+
+    return rows;
+  }
+}
+
+function buildSandTicketsSql(lookbackHours: number): string {
+  const hours = Math.max(1, Math.floor(lookbackHours));
+
+  return `
+select
+  cast(Ticket_Id as string)                              as source_ticket_number,
+  cast(Dispatch_Id as string)                            as source_dispatch_number,
+  Ticket_Status                                          as ticket_status,
+  Load_Type                                              as load_type,
+  Gemini_Material                                        as material,
+  null                                                   as operator,
+  Hauler                                                 as hauler,
+  Driver_Name                                            as driver_name,
+  Truck_Number                                           as truck_number,
+  Trailer_Number                                         as trailer_number,
+  Source                                                 as source_name,
+  cast(Source_Site_UID as string)                        as source_external_id,
+  Source_Site_Type                                       as source_location_type,
+  Destination                                            as destination_name,
+  cast(Destination_Site_UID as string)                   as destination_external_id,
+  Destination_Site_Type                                  as destination_location_type,
+  null                                                   as source_volume,
+  try_cast(Destination_Total_Volume_Tons as decimal(14,2)) as destination_volume,
+  'Tons'                                                 as volume_unit_of_measure,
+  null                                                   as hauling_rate,
+  null                                                   as cost_type,
+  null                                                   as hauling_cost,
+  null                                                   as total_npt_cost,
+  try_cast(Total_Ticket_Cost as decimal(14,2))           as total_ticket_cost,
+  try_cast(Total_Hours as decimal(10,2))                 as duration_hours,
+  null                                                   as billable_time_hours,
+  try_cast(NPT_Hours as decimal(10,2))                   as npt_billable_hours,
+  null                                                   as total_billable_time,
+  Ticket_Start_Time                                      as gps_ticket_started_at,
+  Pickup_Completed_Time                                  as gps_pickup_completed_at,
+  Dropoff_Completed_Time                                 as gps_dropoff_completed_at,
+  Shift_Start_Time                                       as hauler_service_start_at,
+  Ticket_End_Time                                        as hauler_service_end_at,
+  Pickup_Completed_Time                                  as hauler_pickup_completed_at,
+  Dropoff_Completed_Time                                 as hauler_dropoff_completed_at,
+  null                                                   as failed_audit_reason,
+  null                                                   as driver_comments,
+  null                                                   as admin_comments,
+  false                                                  as rerouted,
+  false                                                  as flagged,
+  Dev_Run_UID                                            as upstream_dev_run_uid,
+  Dev_Run_Name                                           as upstream_dev_run_name,
+  Driver_Shift_Id                                        as upstream_driver_shift_id,
+  try_cast(Miles_Traveled as decimal(10,2))              as upstream_miles_traveled
+from jarvis.trust.sand_tickets
+where coalesce(Gemini_Material, 'Sand') = 'Sand'
+  and coalesce(Ticket_Status, '') <> 'Deleted'
+  and coalesce(Hauler, '') not in ('EQT Test Hauler', 'Gemini Hauling')
+  and coalesce(Dropoff_Completed_Time, Ticket_End_Time, Pickup_Completed_Time, Ticket_Start_Time)
+      >= current_timestamp() - INTERVAL ${hours} HOURS
+`;
+}
+
+function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTicket {
+  return {
+    commodity: "sand",
+    sourceTicketNumber: asRequiredString(row.source_ticket_number),
+    sourceDispatchNumber: asNullableString(row.source_dispatch_number),
+    ticketStatus: asNullableString(row.ticket_status),
+    material: asNullableString(row.material),
+    loadType: asNullableString(row.load_type),
+    operator: asNullableString(row.operator),
+    hauler: asNullableString(row.hauler),
+    driverName: asNullableString(row.driver_name),
+    truckNumber: asNullableString(row.truck_number),
+    trailerNumber: asNullableString(row.trailer_number),
+    sourceName: asNullableString(row.source_name),
+    sourceExternalId: asNullableString(row.source_external_id),
+    sourceLocationType: asNullableString(row.source_location_type),
+    destinationName: asNullableString(row.destination_name),
+    destinationExternalId: asNullableString(row.destination_external_id),
+    destinationLocationType: asNullableString(row.destination_location_type),
+    sourceVolume: asNullableDecimalString(row.source_volume),
+    destinationVolume: asNullableDecimalString(row.destination_volume),
+    volumeUnitOfMeasure: asNullableString(row.volume_unit_of_measure),
+    haulingRate: asNullableDecimalString(row.hauling_rate),
+    costType: asNullableString(row.cost_type),
+    haulingCost: asNullableDecimalString(row.hauling_cost),
+    totalNptCost: asNullableDecimalString(row.total_npt_cost),
+    totalTicketCost: asNullableDecimalString(row.total_ticket_cost),
+    durationHours: asNullableDecimalString(row.duration_hours),
+    billableTimeHours: asNullableDecimalString(row.billable_time_hours),
+    nptBillableHours: asNullableDecimalString(row.npt_billable_hours),
+    totalBillableTime: asNullableDecimalString(row.total_billable_time),
+    gpsTicketStartedAt: asNullableDate(row.gps_ticket_started_at),
+    gpsPickupCompletedAt: asNullableDate(row.gps_pickup_completed_at),
+    gpsDropoffCompletedAt: asNullableDate(row.gps_dropoff_completed_at),
+    haulerServiceStartAt: asNullableDate(row.hauler_service_start_at),
+    haulerServiceEndAt: asNullableDate(row.hauler_service_end_at),
+    haulerPickupCompletedAt: asNullableDate(row.hauler_pickup_completed_at),
+    haulerDropoffCompletedAt: asNullableDate(row.hauler_dropoff_completed_at),
+    failedAuditReason: asNullableString(row.failed_audit_reason),
+    driverComments: asNullableString(row.driver_comments),
+    adminComments: asNullableString(row.admin_comments),
+    rerouted: asBoolean(row.rerouted),
+    flagged: asBoolean(row.flagged),
+  };
+}
+
+function arrayRowToObject(columns: string[], row: unknown[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < columns.length; i++) {
+    out[columns[i]] = row[i];
+  }
+  return out;
+}
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value.replace(/\/+$/, "");
+}
+
+function asRequiredString(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    throw new Error("Missing required ticket identifier");
+  }
+  return String(value);
+}
+
+function asNullableString(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function asNullableDecimalString(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
+function asNullableDate(value: unknown): Date | null {
+  if (value === null || value === undefined || value === "") return null;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
