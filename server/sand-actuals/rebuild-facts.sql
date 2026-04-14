@@ -25,6 +25,7 @@ INSERT INTO fact_frac_day_actuals (
   delivered_load_count,
   delivered_tons,
   delivered_total_cost,
+  cost_per_ton,
   avg_field_cycle_hours,
   avg_ticket_cycle_hours,
   participating_truck_count,
@@ -49,6 +50,13 @@ SELECT
   COUNT(*)::integer                                                             AS delivered_load_count,
   COALESCE(SUM(it.destination_volume), 0)                                       AS delivered_tons,
   COALESCE(SUM(it.total_ticket_cost), 0)                                        AS delivered_total_cost,
+  ROUND(
+    CASE
+      WHEN COALESCE(SUM(it.destination_volume), 0) > 0
+        THEN SUM(it.total_ticket_cost) / NULLIF(SUM(it.destination_volume), 0)
+      ELSE NULL
+    END
+  , 2)                                                                          AS cost_per_ton,
   AVG(it.billable_time_hours)                                                   AS avg_field_cycle_hours,
   AVG(it.duration_hours)                                                        AS avg_ticket_cycle_hours,
   COUNT(DISTINCT it.normalized_truck_number)
