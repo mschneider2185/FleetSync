@@ -295,10 +295,10 @@ export async function registerRoutes(
   // --- Sand actuals ---------------------------------------------------------
 
   app.post("/api/sync/sand-tickets", isAuthenticated, async (req: any, res) => {
-    if (!isPlanner(req)) {
-      return res.status(403).json({ message: "Only planners can run sand ticket syncs" });
-    }
     try {
+      if (!isPlanner(req)) {
+        return res.status(403).json({ message: "Only planners can run sand ticket syncs" });
+      }
       const result = await runSandTicketSync({
         storage,
         userId: req.user?.claims?.sub ?? null,
@@ -310,23 +310,29 @@ export async function registerRoutes(
       });
       return res.json(result);
     } catch (e: any) {
+      console.error("[sand-actuals] sync route error:", e);
       return res.status(500).json({ message: e?.message ?? "Sand ticket sync failed" });
     }
   });
 
   app.get("/api/actuals/sand-board", isAuthenticated, async (req, res) => {
-    const dateType = req.query.dateType === "operational" ? "operational" : "calendar";
-    const date =
-      typeof req.query.date === "string"
-        ? req.query.date
-        : new Date().toISOString().slice(0, 10);
+    try {
+      const dateType = req.query.dateType === "operational" ? "operational" : "calendar";
+      const date =
+        typeof req.query.date === "string"
+          ? req.query.date
+          : new Date().toISOString().slice(0, 10);
 
-    const rows =
-      dateType === "operational"
-        ? await storage.getSandActualsBoardByOperationalDate(date)
-        : await storage.getSandActualsBoardByCalendarDate(date);
+      const rows =
+        dateType === "operational"
+          ? await storage.getSandActualsBoardByOperationalDate(date)
+          : await storage.getSandActualsBoardByCalendarDate(date);
 
-    return res.json({ dateType, date, rows });
+      return res.json({ dateType, date, rows });
+    } catch (e: any) {
+      console.error("[sand-actuals] board route error:", e);
+      return res.status(500).json({ message: e?.message ?? "Failed to load sand actuals board" });
+    }
   });
 
   app.get("/api/scenarios/:scenarioId/schedules", isAuthenticated, async (req, res) => {

@@ -1,0 +1,143 @@
+That curl is the smoking gun.
+
+127.0.0.1:5000 is serving the Vite frontend shell, not your JSON API. The response is the app HTML with /@vite/client, src/main.tsx, and the Replit dev banner. So the Sand Actuals page is not failing because of the database now. It is failing because the request is landing on the frontend dev server/fallback, not the Express handler.
+
+What this proves
+
+Your request to:
+
+curl -i "http://127.0.0.1:5000/api/actuals/sand-board?dateType=calendar&date=2026-04-14"
+
+should have returned JSON. Instead it returned the SPA HTML shell. That means one of these is true:
+
+Express is not listening on 5000
+Express is behind Vite, but the /api request is not being proxied to it
+the SPA catch-all is registered before the API route
+Replit is running only the frontend entrypoint, not the full server entrypoint
+Most likely root cause
+
+In this repo shape, the most likely issue is:
+
+the frontend catch-all / Vite middleware is handling /api/* before Express routes do
+
+or
+
+the process Replit is exposing is the Vite app, not the Express app with registerRoutes(app)
+
+The fastest isolation test
+
+Add this to server/routes.ts:
+
+app.get("/api/debug/ping", (_req, res) => {
+  res.json({ ok: true, source: "express" });
+});
+
+Then run:
+
+curl -i "http://127.0.0.1:5000/api/debug/ping"
+If you still get HTML
+
+Then /api/* is never reaching Express at all.
+
+If you get JSON
+
+Then Express is reachable, and the issue is route ordering or auth specifically for the board route.
+
+What to inspect right now
+
+Check these files in this order:
+
+1. server/index.ts or equivalent startup file
+
+You want this order:
+
+const app = express();
+
+// api middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+// register api routes first
+await registerRoutes(app);
+
+// vite/static frontend last
+if (app.get("env") === "development") {
+  await setupVite(app, server);
+} else {
+  serveStatic(app);
+}
+
+The key rule is:
+
+API routes must be registered before any Vite/static catch-all.
+
+If Vite or the SPA fallback comes first, /api/actuals/sand-board gets swallowed and you get exactly the HTML you showed.
+
+2. Any catch-all route
+
+Look for something like:
+
+app.get("*", ...)
+
+or Vite middleware that ultimately serves index.html.
+
+That must come after API routes, never before.
+
+3. Replit run command
+
+Make sure Replit is starting the Express server entrypoint, not only Vite.
+
+If the app is running a frontend-only dev command, the browser will work, but /api/* will fall back to HTML.
+
+You want something like:
+
+one Node server process that mounts Express and Vite together
+not “Vite only”
+The direct fix pattern
+
+If your startup file currently does frontend first, change it to this pattern:
+
+import express from "express";
+import { registerRoutes } from "./routes";
+import { setupVite, serveStatic } from "./vite";
+
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+await registerRoutes(app);
+
+if (process.env.NODE_ENV === "development") {
+  await setupVite(app);
+} else {
+  serveStatic(app);
+}
+One more useful hardening step
+
+Even after you fix the routing, patch the page fetch so it tells you this clearly next time:
+
+const res = await fetch(`/api/actuals/sand-board?dateType=${dateType}&date=${date}`, {
+  credentials: "include",
+});
+
+const contentType = res.headers.get("content-type") ?? "";
+const raw = await res.text();
+
+if (!res.ok) {
+  throw new Error(raw || res.statusText);
+}
+
+if (!contentType.includes("application/json")) {
+  throw new Error(`Expected JSON but got ${contentType}: ${raw.slice(0, 200)}`);
+}
+
+const data = JSON.parse(raw);
+What you should do next
+
+Open and inspect:
+
+server/index.ts or your main server boot file
+server/routes.ts
+anything that sets up Vite/static serving
+
+The bug is almost certainly there now, not in the Sand Actuals feature code.
