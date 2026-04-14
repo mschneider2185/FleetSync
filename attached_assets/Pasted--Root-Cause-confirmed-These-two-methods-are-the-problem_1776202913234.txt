@@ -1,0 +1,131 @@
+🔴 Root Cause (confirmed)
+
+These two methods are the problem:
+
+async getSandActualsBoardByCalendarDate(dateStr: string)
+async getSandActualsBoardByOperationalDate(dateStr: string)
+
+Right now they do:
+
+return db
+  .select()
+  .from(factFracDayActuals)
+  .where(eq(...))
+
+👉 That returns raw fact rows
+👉 Your fact table is NOT one row per frac per day
+
+So the board is showing:
+
+multiple rows per frac
+split by operational vs calendar overlap
+exactly what you're seeing
+✅ What we need instead
+
+The board should return:
+
+👉 1 row per frac per selected date type
+
+So we must:
+
+aggregate (SUM) the fact rows
+group by frac (dev_run_uid / dev_run_name)
+not return raw rows
+🛠️ Fix (drop-in replacement)
+Replace BOTH board methods with this
+Calendar Date
+async getSandActualsBoardByCalendarDate(dateStr: string): Promise<any[]> {
+  const result = await pool.query(`
+    SELECT
+      dev_run_uid,
+      MAX(dev_run_name) AS dev_run_name,
+      MAX(site_name) AS site_name,
+
+      SUM(delivered_load_count) AS delivered_load_count,
+      ROUND(SUM(delivered_tons), 1) AS delivered_tons,
+      ROUND(SUM(delivered_total_cost), 0) AS delivered_total_cost,
+
+      SUM(day_load_count) AS day_load_count,
+      SUM(night_load_count) AS night_load_count,
+
+      -- ⚠️ leave these as-is for now (we'll fix later)
+      MAX(participating_truck_count) AS participating_truck_count,
+      MAX(core_truck_count_2plus) AS core_truck_count_2plus,
+      MAX(core_truck_count_3plus) AS core_truck_count_3plus,
+
+      ROUND(AVG(avg_field_cycle_hours), 2) AS avg_field_cycle_hours,
+      ROUND(AVG(avg_ticket_cycle_hours), 2) AS avg_ticket_cycle_hours,
+
+      CASE 
+        WHEN SUM(delivered_tons) > 0
+        THEN ROUND(SUM(delivered_total_cost) / SUM(delivered_tons), 2)
+        ELSE NULL
+      END AS cost_per_ton,
+
+      MAX(attribution_method) AS attribution_method
+
+    FROM fact_frac_day_actuals
+    WHERE calendar_report_date = $1
+    GROUP BY dev_run_uid
+    ORDER BY dev_run_name;
+  `, [dateStr]);
+
+  return result.rows;
+}
+Operational Day
+async getSandActualsBoardByOperationalDate(dateStr: string): Promise<any[]> {
+  const result = await pool.query(`
+    SELECT
+      dev_run_uid,
+      MAX(dev_run_name) AS dev_run_name,
+      MAX(site_name) AS site_name,
+
+      SUM(delivered_load_count) AS delivered_load_count,
+      ROUND(SUM(delivered_tons), 1) AS delivered_tons,
+      ROUND(SUM(delivered_total_cost), 0) AS delivered_total_cost,
+
+      SUM(day_load_count) AS day_load_count,
+      SUM(night_load_count) AS night_load_count,
+
+      MAX(participating_truck_count) AS participating_truck_count,
+      MAX(core_truck_count_2plus) AS core_truck_count_2plus,
+      MAX(core_truck_count_3plus) AS core_truck_count_3plus,
+
+      ROUND(AVG(avg_field_cycle_hours), 2) AS avg_field_cycle_hours,
+      ROUND(AVG(avg_ticket_cycle_hours), 2) AS avg_ticket_cycle_hours,
+
+      CASE 
+        WHEN SUM(delivered_tons) > 0
+        THEN ROUND(SUM(delivered_total_cost) / SUM(delivered_tons), 2)
+        ELSE NULL
+      END AS cost_per_ton,
+
+      MAX(attribution_method) AS attribution_method
+
+    FROM fact_frac_day_actuals
+    WHERE operational_day_date = $1
+    GROUP BY dev_run_uid
+    ORDER BY dev_run_name;
+  `, [dateStr]);
+
+  return result.rows;
+}
+🎯 What this fixes immediately
+
+After this change:
+
+BEFORE
+Franklin Denny (2 rows)
+Leto (2 rows)
+COP (2 rows)
+AFTER
+Franklin Denny (1 row)
+Leto (1 row)
+COP (1 row)
+
+And your numbers will now match your morning report much closer:
+
+loads ✅
+tons ✅
+cost ✅
+day/night split ✅

@@ -143,8 +143,8 @@ export interface IStorage {
   ): Promise<number>;
 
   // Sand actuals — board reads
-  getSandActualsBoardByCalendarDate(date: string): Promise<FactFracDayActual[]>;
-  getSandActualsBoardByOperationalDate(date: string): Promise<FactFracDayActual[]>;
+  getSandActualsBoardByCalendarDate(date: string): Promise<any[]>;
+  getSandActualsBoardByOperationalDate(date: string): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -506,20 +506,78 @@ export class DatabaseStorage implements IStorage {
     return result.rowCount ?? 0;
   }
 
-  async getSandActualsBoardByCalendarDate(dateStr: string): Promise<FactFracDayActual[]> {
-    return db
-      .select()
-      .from(factFracDayActuals)
-      .where(eq(factFracDayActuals.calendarReportDate, dateStr))
-      .orderBy(factFracDayActuals.devRunName);
+  async getSandActualsBoardByCalendarDate(dateStr: string): Promise<any[]> {
+    const result = await pool.query(`
+      SELECT
+        dev_run_uid,
+        MAX(dev_run_name) AS dev_run_name,
+        MAX(site_name) AS site_name,
+
+        SUM(delivered_load_count) AS delivered_load_count,
+        ROUND(SUM(delivered_tons)::numeric, 1) AS delivered_tons,
+        ROUND(SUM(delivered_total_cost)::numeric, 0) AS delivered_total_cost,
+
+        SUM(day_load_count) AS day_load_count,
+        SUM(night_load_count) AS night_load_count,
+
+        MAX(participating_truck_count) AS participating_truck_count,
+        MAX(core_truck_count_2plus) AS core_truck_count_2plus,
+        MAX(core_truck_count_3plus) AS core_truck_count_3plus,
+
+        ROUND(AVG(avg_field_cycle_hours)::numeric, 2) AS avg_field_cycle_hours,
+        ROUND(AVG(avg_ticket_cycle_hours)::numeric, 2) AS avg_ticket_cycle_hours,
+
+        CASE
+          WHEN SUM(delivered_tons) > 0
+          THEN ROUND((SUM(delivered_total_cost) / SUM(delivered_tons))::numeric, 2)
+          ELSE NULL
+        END AS cost_per_ton,
+
+        MAX(attribution_method) AS attribution_method
+
+      FROM fact_frac_day_actuals
+      WHERE calendar_report_date = $1
+      GROUP BY dev_run_uid
+      ORDER BY MAX(dev_run_name);
+    `, [dateStr]);
+    return result.rows;
   }
 
-  async getSandActualsBoardByOperationalDate(dateStr: string): Promise<FactFracDayActual[]> {
-    return db
-      .select()
-      .from(factFracDayActuals)
-      .where(eq(factFracDayActuals.operationalDayDate, dateStr))
-      .orderBy(factFracDayActuals.devRunName);
+  async getSandActualsBoardByOperationalDate(dateStr: string): Promise<any[]> {
+    const result = await pool.query(`
+      SELECT
+        dev_run_uid,
+        MAX(dev_run_name) AS dev_run_name,
+        MAX(site_name) AS site_name,
+
+        SUM(delivered_load_count) AS delivered_load_count,
+        ROUND(SUM(delivered_tons)::numeric, 1) AS delivered_tons,
+        ROUND(SUM(delivered_total_cost)::numeric, 0) AS delivered_total_cost,
+
+        SUM(day_load_count) AS day_load_count,
+        SUM(night_load_count) AS night_load_count,
+
+        MAX(participating_truck_count) AS participating_truck_count,
+        MAX(core_truck_count_2plus) AS core_truck_count_2plus,
+        MAX(core_truck_count_3plus) AS core_truck_count_3plus,
+
+        ROUND(AVG(avg_field_cycle_hours)::numeric, 2) AS avg_field_cycle_hours,
+        ROUND(AVG(avg_ticket_cycle_hours)::numeric, 2) AS avg_ticket_cycle_hours,
+
+        CASE
+          WHEN SUM(delivered_tons) > 0
+          THEN ROUND((SUM(delivered_total_cost) / SUM(delivered_tons))::numeric, 2)
+          ELSE NULL
+        END AS cost_per_ton,
+
+        MAX(attribution_method) AS attribution_method
+
+      FROM fact_frac_day_actuals
+      WHERE operational_day_date = $1
+      GROUP BY dev_run_uid
+      ORDER BY MAX(dev_run_name);
+    `, [dateStr]);
+    return result.rows;
   }
 }
 
