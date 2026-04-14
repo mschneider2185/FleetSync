@@ -2,6 +2,7 @@ import {
   lanes, scenarios, fracJobs, scenarioFracSchedules,
   haulers, haulerCapacityExceptions, allocationBlocks,
   presets, fracDailyEvents,
+  syncRuns, ingestedTickets, ticketAttributions, factFracDayActuals,
   type Lane, type InsertLane,
   type Scenario, type InsertScenario,
   type FracJob, type InsertFracJob,
@@ -11,9 +12,27 @@ import {
   type AllocationBlock, type InsertAllocationBlock,
   type Preset, type InsertPreset,
   type FracDailyEvent, type InsertFracDailyEvent,
+  type SyncRun, type InsertSyncRun,
+  type IngestedTicket, type InsertIngestedTicket,
+  type TicketAttribution, type InsertTicketAttribution,
+  type FactFracDayActual,
 } from "@shared/schema";
-import { db } from "./db";
-import { eq, and, lte, gte, ne, or, SQL } from "drizzle-orm";
+import { db, pool } from "./db";
+import { eq, and, lte, gte, ne, or, SQL, sql } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const storageDir = path.dirname(fileURLToPath(import.meta.url));
+const REBUILD_FACTS_SQL_PATH = path.join(storageDir, "sand-actuals", "rebuild-facts.sql");
+
+let rebuildFactsSqlCache: string | null = null;
+async function getRebuildFactsSql(): Promise<string> {
+  if (rebuildFactsSqlCache === null) {
+    rebuildFactsSqlCache = await readFile(REBUILD_FACTS_SQL_PATH, "utf8");
+  }
+  return rebuildFactsSqlCache;
+}
 
 export interface IStorage {
   getLanes(): Promise<Lane[]>;
@@ -73,6 +92,59 @@ export interface IStorage {
   createEvent(event: InsertFracDailyEvent): Promise<FracDailyEvent>;
   updateEvent(id: number, event: Partial<InsertFracDailyEvent>): Promise<FracDailyEvent | undefined>;
   deleteEvent(id: number): Promise<void>;
+
+  // Sand actuals — sync lifecycle
+  createSyncRun(run: InsertSyncRun): Promise<SyncRun>;
+  completeSyncRun(
+    id: number,
+    updates: Partial<
+      Pick<
+        SyncRun,
+        | "status"
+        | "endedAt"
+        | "rowsRead"
+        | "rowsWritten"
+        | "rowsUpdated"
+        | "rowsSkipped"
+        | "lastSeenAt"
+        | "errorMessage"
+      >
+    >,
+  ): Promise<SyncRun | undefined>;
+
+  // Sand actuals — tickets
+  upsertIngestedTicket(
+    ticket: InsertIngestedTicket,
+  ): Promise<{ ticket: IngestedTicket; inserted: boolean }>;
+  getIngestedSandTicketsForAttribution(
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<IngestedTicket[]>;
+
+  // Sand actuals — attributions
+  deleteTicketAttributionsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+  ): Promise<void>;
+  createTicketAttribution(attribution: InsertTicketAttribution): Promise<TicketAttribution>;
+
+  // Sand actuals — facts
+  deleteFactFracDayActualsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+  ): Promise<void>;
+  rebuildFactFracDayActualsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+    syncRunId: number | null,
+  ): Promise<number>;
+
+  // Sand actuals — board reads
+  getSandActualsBoardByCalendarDate(date: string): Promise<FactFracDayActual[]>;
+  getSandActualsBoardByOperationalDate(date: string): Promise<FactFracDayActual[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -301,6 +373,153 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteEvent(id: number): Promise<void> {
     await db.delete(fracDailyEvents).where(eq(fracDailyEvents.id, id));
+  }
+
+  // --- Sand actuals -----------------------------------------------------------
+
+  async createSyncRun(run: InsertSyncRun): Promise<SyncRun> {
+    const [created] = await db.insert(syncRuns).values(run).returning();
+    return created;
+  }
+
+  async completeSyncRun(
+    id: number,
+    updates: Partial<
+      Pick<
+        SyncRun,
+        | "status"
+        | "endedAt"
+        | "rowsRead"
+        | "rowsWritten"
+        | "rowsUpdated"
+        | "rowsSkipped"
+        | "lastSeenAt"
+        | "errorMessage"
+      >
+    >,
+  ): Promise<SyncRun | undefined> {
+    const [updated] = await db
+      .update(syncRuns)
+      .set(updates)
+      .where(eq(syncRuns.id, id))
+      .returning();
+    return updated;
+  }
+
+  async upsertIngestedTicket(
+    ticket: InsertIngestedTicket,
+  ): Promise<{ ticket: IngestedTicket; inserted: boolean }> {
+    // Drizzle does not expose xmax directly, so we check for an existing row first
+    // to classify the upsert as insert vs update. This is a single additional
+    // PK-indexed select per ticket and stays readable.
+    const [existing] = await db
+      .select({ id: ingestedTickets.id })
+      .from(ingestedTickets)
+      .where(eq(ingestedTickets.sourceTicketNumber, ticket.sourceTicketNumber));
+
+    const now = new Date();
+    const [row] = await db
+      .insert(ingestedTickets)
+      .values({ ...ticket, syncedAt: now, lastSeenAt: now })
+      .onConflictDoUpdate({
+        target: ingestedTickets.sourceTicketNumber,
+        set: { ...ticket, lastSeenAt: now },
+      })
+      .returning();
+
+    return { ticket: row, inserted: !existing };
+  }
+
+  async getIngestedSandTicketsForAttribution(
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<IngestedTicket[]> {
+    const conditions: SQL<unknown>[] = [eq(ingestedTickets.commodity, "sand")];
+
+    if (fromDate) {
+      conditions.push(
+        sql`COALESCE(${ingestedTickets.gpsDropoffCompletedAt}, ${ingestedTickets.haulerDropoffCompletedAt}, ${ingestedTickets.haulerServiceEndAt}) >= ${fromDate}::timestamp`,
+      );
+    }
+    if (toDate) {
+      conditions.push(
+        sql`COALESCE(${ingestedTickets.gpsDropoffCompletedAt}, ${ingestedTickets.haulerDropoffCompletedAt}, ${ingestedTickets.haulerServiceEndAt}) <= (${toDate}::date + interval '1 day')`,
+      );
+    }
+
+    return db
+      .select()
+      .from(ingestedTickets)
+      .where(and(...conditions));
+  }
+
+  async deleteTicketAttributionsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+  ): Promise<void> {
+    await db
+      .delete(ticketAttributions)
+      .where(
+        and(
+          eq(ticketAttributions.attributionMethod, attributionMethod),
+          gte(ticketAttributions.calendarReportDate, fromDate),
+          lte(ticketAttributions.calendarReportDate, toDate),
+        ),
+      );
+  }
+
+  async createTicketAttribution(
+    attribution: InsertTicketAttribution,
+  ): Promise<TicketAttribution> {
+    const [created] = await db
+      .insert(ticketAttributions)
+      .values(attribution)
+      .returning();
+    return created;
+  }
+
+  async deleteFactFracDayActualsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+  ): Promise<void> {
+    await db
+      .delete(factFracDayActuals)
+      .where(
+        and(
+          eq(factFracDayActuals.attributionMethod, attributionMethod),
+          gte(factFracDayActuals.calendarReportDate, fromDate),
+          lte(factFracDayActuals.calendarReportDate, toDate),
+        ),
+      );
+  }
+
+  async rebuildFactFracDayActualsForCalendarWindow(
+    fromDate: string,
+    toDate: string,
+    attributionMethod: string,
+    syncRunId: number | null,
+  ): Promise<number> {
+    const sqlText = await getRebuildFactsSql();
+    const result = await pool.query(sqlText, [fromDate, toDate, attributionMethod, syncRunId]);
+    return result.rowCount ?? 0;
+  }
+
+  async getSandActualsBoardByCalendarDate(dateStr: string): Promise<FactFracDayActual[]> {
+    return db
+      .select()
+      .from(factFracDayActuals)
+      .where(eq(factFracDayActuals.calendarReportDate, dateStr))
+      .orderBy(factFracDayActuals.devRunName);
+  }
+
+  async getSandActualsBoardByOperationalDate(dateStr: string): Promise<FactFracDayActual[]> {
+    return db
+      .select()
+      .from(factFracDayActuals)
+      .where(eq(factFracDayActuals.operationalDayDate, dateStr))
+      .orderBy(factFracDayActuals.devRunName);
   }
 }
 

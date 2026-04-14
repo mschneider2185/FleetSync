@@ -15,6 +15,7 @@ import AllocationGridPage from "@/pages/allocation-grid";
 import FracJobsPage from "@/pages/frac-jobs";
 import HaulersPage from "@/pages/haulers";
 import ImportPage from "@/pages/import";
+import SandActualsBoardPage from "@/pages/sand-actuals-board";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const pageTitles: Record<string, string> = {
@@ -23,6 +24,7 @@ const pageTitles: Record<string, string> = {
   "/frac-jobs": "Frac Jobs",
   "/haulers": "Haulers",
   "/import": "Import",
+  "/sand-actuals": "Sand Actuals Board",
 };
 
 function Router() {
@@ -33,6 +35,7 @@ function Router() {
       <Route path="/frac-jobs" component={FracJobsPage} />
       <Route path="/haulers" component={HaulersPage} />
       <Route path="/import" component={ImportPage} />
+      <Route path="/sand-actuals" component={SandActualsBoardPage} />
       <Route component={NotFound} />
     </Switch>
   );

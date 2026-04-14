@@ -21,6 +21,7 @@ import multer from "multer";
 import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
 import { parseSandplanCsv } from "./import/sandplan-csv";
 import { resolveImportScenario, runSandplanImport } from "./import/run-import";
+import { runSandTicketSync } from "./sand-actuals";
 
 function toShift(s: string | null | undefined): "day" | "night" | "both" {
   if (s === "day" || s === "night" || s === "both") return s;
@@ -294,6 +295,43 @@ export async function registerRoutes(
     if (!isPlanner(req)) return res.status(403).json({ message: "Only planners can permanently delete frac jobs" });
     await storage.deleteFracJob(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  // --- Sand actuals ---------------------------------------------------------
+
+  app.post("/api/sync/sand-tickets", isAuthenticated, async (req: any, res) => {
+    if (!isPlanner(req)) {
+      return res.status(403).json({ message: "Only planners can run sand ticket syncs" });
+    }
+    try {
+      const result = await runSandTicketSync({
+        storage,
+        userId: req.user?.claims?.sub ?? null,
+        lookbackHours: Number(req.body?.lookbackHours ?? 48),
+        rebuildFacts: req.body?.rebuildFacts !== false,
+        rebuildFrom: typeof req.body?.rebuildFrom === "string" ? req.body.rebuildFrom : null,
+        rebuildTo: typeof req.body?.rebuildTo === "string" ? req.body.rebuildTo : null,
+        dryRun: Boolean(req.body?.dryRun ?? false),
+      });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ message: e?.message ?? "Sand ticket sync failed" });
+    }
+  });
+
+  app.get("/api/actuals/sand-board", isAuthenticated, async (req, res) => {
+    const dateType = req.query.dateType === "operational" ? "operational" : "calendar";
+    const date =
+      typeof req.query.date === "string"
+        ? req.query.date
+        : new Date().toISOString().slice(0, 10);
+
+    const rows =
+      dateType === "operational"
+        ? await storage.getSandActualsBoardByOperationalDate(date)
+        : await storage.getSandActualsBoardByCalendarDate(date);
+
+    return res.json({ dateType, date, rows });
   });
 
   app.get("/api/scenarios/:scenarioId/schedules", isAuthenticated, async (req, res) => {
