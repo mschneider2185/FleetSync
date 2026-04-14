@@ -19,6 +19,7 @@ import { ZodError } from "zod";
 
 import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
 import { runSandTicketSync } from "./sand-actuals";
+import { DatabricksTicketSource } from "./sand-actuals/databricks-ticket-source";
 
 function toShift(s: string | null | undefined): "day" | "night" | "both" {
   if (s === "day" || s === "night" || s === "both") return s;
@@ -299,6 +300,8 @@ export async function registerRoutes(
       if (!isPlanner(req)) {
         return res.status(403).json({ message: "Only planners can run sand ticket syncs" });
       }
+      const source = new DatabricksTicketSource();
+
       const result = await runSandTicketSync({
         storage,
         userId: req.user?.claims?.sub ?? null,
@@ -307,6 +310,7 @@ export async function registerRoutes(
         rebuildFrom: typeof req.body?.rebuildFrom === "string" ? req.body.rebuildFrom : null,
         rebuildTo: typeof req.body?.rebuildTo === "string" ? req.body.rebuildTo : null,
         dryRun: Boolean(req.body?.dryRun ?? false),
+        source,
       });
       return res.json(result);
     } catch (e: any) {
