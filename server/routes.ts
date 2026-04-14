@@ -16,19 +16,14 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
-import multer from "multer";
 
 import { runLaneCascadeAfterEndDateExtend } from "./import/cascade";
-import { parseSandplanCsv } from "./import/sandplan-csv";
-import { resolveImportScenario, runSandplanImport } from "./import/run-import";
 import { runSandTicketSync } from "./sand-actuals";
 
 function toShift(s: string | null | undefined): "day" | "night" | "both" {
   if (s === "day" || s === "night" || s === "both") return s;
   return "both";
 }
-
-const upload = multer({ storage: multer.memoryStorage() });
 
 function validateBody(schema: any, body: any) {
   return schema.parse(body);
@@ -395,46 +390,6 @@ export async function registerRoutes(
     if (!(await checkScenarioEditable(req, res, schedule.scenarioId))) return;
     await storage.deleteSchedule(schedule.id);
     res.json({ ok: true });
-  });
-
-  app.post("/api/import/sandplan/preview", isAuthenticated, upload.single("file"), async (req: any, res) => {
-    try {
-      const file = req.file;
-      if (!file?.buffer) return res.status(400).json({ message: "No file uploaded; use field name 'file'" });
-      const { rows, warnings, detectedMappings } = parseSandplanCsv(file.buffer);
-      return res.json({ ok: true, normalizedRows: rows, detectedMappings, warnings });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      return res.status(400).json({ message });
-    }
-  });
-
-  app.post("/api/import/sandplan", isAuthenticated, upload.single("file"), async (req: any, res) => {
-    try {
-      const file = req.file;
-      if (!file?.buffer) return res.status(400).json({ message: "No file uploaded; use field name 'file'" });
-      const scenarioIdParam = req.query.scenarioId != null ? Number(req.query.scenarioId) : undefined;
-
-      const { scenarioId, created } = await resolveImportScenario(storage, scenarioIdParam);
-      if (!(await checkScenarioEditable(req, res, scenarioId))) return;
-
-      const { rows, warnings: parseWarnings } = parseSandplanCsv(file.buffer);
-      const { summary } = await runSandplanImport(storage, scenarioId, rows);
-      const warnings = [...parseWarnings, ...summary.warnings];
-
-      return res.json({
-        ok: true,
-        scenarioId,
-        summary: {
-          ...summary,
-          warnings,
-        },
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (message === "Scenario not found") return res.status(404).json({ message });
-      return res.status(400).json({ message });
-    }
   });
 
   app.get("/api/haulers", isAuthenticated, async (_req, res) => {
