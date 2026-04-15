@@ -143,8 +143,8 @@ export interface IStorage {
   ): Promise<number>;
 
   // Sand actuals — board reads
-  getSandActualsBoardByCalendarDate(date: string): Promise<any[]>;
-  getSandActualsBoardByOperationalDate(date: string): Promise<any[]>;
+  getSandActualsBoardByCalendarDate(date: string): Promise<FactFracDayActual[]>;
+  getSandActualsBoardByOperationalDate(date: string): Promise<FactFracDayActual[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -506,79 +506,82 @@ export class DatabaseStorage implements IStorage {
     return result.rowCount ?? 0;
   }
 
-  async getSandActualsBoardByCalendarDate(dateStr: string): Promise<any[]> {
-    const result = await pool.query(`
-      SELECT
-        dev_run_uid,
-        MAX(dev_run_name) AS dev_run_name,
-        MAX(site_name) AS site_name,
-
-        SUM(delivered_load_count) AS delivered_load_count,
-        ROUND(SUM(delivered_tons)::numeric, 1) AS delivered_tons,
-        ROUND(SUM(delivered_total_cost)::numeric, 0) AS delivered_total_cost,
-
-        SUM(day_load_count) AS day_load_count,
-        SUM(night_load_count) AS night_load_count,
-
-        MAX(participating_truck_count) AS participating_truck_count,
-        MAX(core_truck_count_2plus) AS core_truck_count_2plus,
-        MAX(core_truck_count_3plus) AS core_truck_count_3plus,
-
-        ROUND(AVG(avg_field_cycle_hours)::numeric, 2) AS avg_field_cycle_hours,
-        ROUND(AVG(avg_ticket_cycle_hours)::numeric, 2) AS avg_ticket_cycle_hours,
-
-        CASE
-          WHEN SUM(delivered_tons) > 0
-          THEN ROUND((SUM(delivered_total_cost) / SUM(delivered_tons))::numeric, 2)
-          ELSE NULL
-        END AS cost_per_ton,
-
-        MAX(attribution_method) AS attribution_method
-
-      FROM fact_frac_day_actuals
-      WHERE calendar_report_date = $1
-      GROUP BY dev_run_uid
-      ORDER BY MAX(dev_run_name);
-    `, [dateStr]);
-    return result.rows;
+  async getSandActualsBoardByCalendarDate(dateStr: string): Promise<FactFracDayActual[]> {
+    const result = await pool.query(buildSandActualsBoardSql("calendar_report_date"), [dateStr]);
+    return result.rows as unknown as FactFracDayActual[];
   }
 
-  async getSandActualsBoardByOperationalDate(dateStr: string): Promise<any[]> {
-    const result = await pool.query(`
-      SELECT
-        dev_run_uid,
-        MAX(dev_run_name) AS dev_run_name,
-        MAX(site_name) AS site_name,
-
-        SUM(delivered_load_count) AS delivered_load_count,
-        ROUND(SUM(delivered_tons)::numeric, 1) AS delivered_tons,
-        ROUND(SUM(delivered_total_cost)::numeric, 0) AS delivered_total_cost,
-
-        SUM(day_load_count) AS day_load_count,
-        SUM(night_load_count) AS night_load_count,
-
-        MAX(participating_truck_count) AS participating_truck_count,
-        MAX(core_truck_count_2plus) AS core_truck_count_2plus,
-        MAX(core_truck_count_3plus) AS core_truck_count_3plus,
-
-        ROUND(AVG(avg_field_cycle_hours)::numeric, 2) AS avg_field_cycle_hours,
-        ROUND(AVG(avg_ticket_cycle_hours)::numeric, 2) AS avg_ticket_cycle_hours,
-
-        CASE
-          WHEN SUM(delivered_tons) > 0
-          THEN ROUND((SUM(delivered_total_cost) / SUM(delivered_tons))::numeric, 2)
-          ELSE NULL
-        END AS cost_per_ton,
-
-        MAX(attribution_method) AS attribution_method
-
-      FROM fact_frac_day_actuals
-      WHERE operational_day_date = $1
-      GROUP BY dev_run_uid
-      ORDER BY MAX(dev_run_name);
-    `, [dateStr]);
-    return result.rows;
+  async getSandActualsBoardByOperationalDate(dateStr: string): Promise<FactFracDayActual[]> {
+    const result = await pool.query(buildSandActualsBoardSql("operational_day_date"), [dateStr]);
+    return result.rows as unknown as FactFracDayActual[];
   }
+}
+
+/**
+ * SQL that rolls fact_frac_day_actuals up to one row per dev_run_uid for a given
+ * date, aliasing every column to the camelCase shape that the client's
+ * FactFracDayActual type expects so the response can be rendered without any
+ * client-side reshaping. The id field is populated from dev_run_uid for use as
+ * a stable React key.
+ */
+function buildSandActualsBoardSql(dateColumn: "calendar_report_date" | "operational_day_date"): string {
+  return `
+    SELECT
+      dev_run_uid                           AS "id",
+      MAX(sync_run_id)                      AS "syncRunId",
+      dev_run_uid                           AS "devRunUid",
+      MAX(dev_run_name)                     AS "devRunName",
+      MAX(frac_job_id)                      AS "fracJobId",
+      MAX(site_uid)                         AS "siteUid",
+      MAX(site_name)                        AS "siteName",
+      MAX(resource_spread)                  AS "resourceSpread",
+      MAX(water_system)                     AS "waterSystem",
+      MAX(calendar_report_date)             AS "calendarReportDate",
+      MAX(operational_day_date)             AS "operationalDayDate",
+      SUM(delivered_load_count)             AS "deliveredLoadCount",
+      SUM(delivered_tons)                   AS "deliveredTons",
+      SUM(delivered_total_cost)             AS "deliveredTotalCost",
+      AVG(avg_field_cycle_hours)            AS "avgFieldCycleHours",
+      AVG(avg_ticket_cycle_hours)           AS "avgTicketCycleHours",
+      -- TODO: MAX(participating_truck_count) / core_truck_count_2plus / core_truck_count_3plus
+      -- below are aggregating already-aggregated counts across methods, which is wrong
+      -- whenever a single dev_run has rows for multiple attribution_methods on the same
+      -- date. Replace with COUNT(DISTINCT normalized_driver_name / normalized_truck_number)
+      -- computed directly against ingested_tickets joined through ticket_attributions
+      -- once the Databricks IO slice lands.
+      MAX(participating_truck_count)        AS "participatingTruckCount",
+      MAX(active_driver_count)              AS "activeDriverCount",
+      SUM(day_load_count)                   AS "dayLoadCount",
+      SUM(night_load_count)                 AS "nightLoadCount",
+      MAX(core_truck_count_2plus)           AS "coreTruckCount2Plus",
+      MAX(core_truck_count_3plus)           AS "coreTruckCount3Plus",
+      MAX(stage_count_actual)               AS "stageCountActual",
+      MAX(pump_time_hours)                  AS "pumpTimeHours",
+      MAX(ops_npt_hours)                    AS "opsNptHours",
+      MAX(total_proppant_lb_actual)         AS "totalProppantLbActual",
+      MAX(daily_req_tons)                   AS "dailyReqTons",
+      MAX(ton_delta)                        AS "tonDelta",
+      SUM(total_npt_hours)                  AS "totalNptHours",
+      SUM(sand_npt_hours)                   AS "sandNptHours",
+      SUM(water_npt_hours)                  AS "waterNptHours",
+      SUM(weather_npt_hours)                AS "weatherNptHours",
+      SUM(pump_npt_hours)                   AS "pumpNptHours",
+      MAX(npt_d1_cat)                       AS "nptD1Cat",
+      MAX(npt_d1_reason)                    AS "nptD1Reason",
+      MAX(npt_d1_hours)                     AS "nptD1Hours",
+      MAX(npt_d2_cat)                       AS "nptD2Cat",
+      MAX(npt_d2_reason)                    AS "nptD2Reason",
+      MAX(npt_d2_hours)                     AS "nptD2Hours",
+      AVG(tons_per_stage)                   AS "tonsPerStage",
+      AVG(cost_per_stage)                   AS "costPerStage",
+      AVG(cost_per_ton)                     AS "costPerTon",
+      MAX(attribution_method)               AS "attributionMethod",
+      MAX(refreshed_at)                     AS "refreshedAt"
+    FROM fact_frac_day_actuals
+    WHERE ${dateColumn} = $1::date
+    GROUP BY dev_run_uid
+    ORDER BY "devRunName"
+  `;
 }
 
 export const storage = new DatabaseStorage();
