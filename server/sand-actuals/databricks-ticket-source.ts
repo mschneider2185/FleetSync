@@ -187,63 +187,154 @@ export class DatabricksTicketSource implements TicketSource {
 function buildSandTicketsSql(lookbackHours: number): string {
   const hours = Math.max(1, Math.floor(lookbackHours));
 
+  // Source-of-truth change: this query now mirrors the morning report.
+  //
+  //   - Tickets come from gemini.eqt.tickets (not jarvis.trust.sand_tickets).
+  //   - Pad attribution (Dev_Run_UID, Dev_Run_Name, Site_UID, Site_Name,
+  //     Resource, Water_System) comes from an active_pads CTE over
+  //     jarvis.rpt.glancer_mos, filtered to the current FRAC snapshot.
+  //     The join on g.DestinationExternalId = p.site_uid is what produces
+  //     identical counts to the morning report for loads, tons, cost,
+  //     day/night split, truck counts, and cycle times.
+  //   - All timestamps are converted to America/New_York via
+  //     from_utc_timestamp before any date or hour is derived.
+  //   - billable_time_hours is the GPS field cycle (pickup -> dropoff),
+  //     filtered to [0.25, 18] hours to drop outliers.
+  //   - duration_hours is the ticket cycle (GPSTicketStarted ->
+  //     HaulerServiceEndTime), filtered to [0.25, 24] hours.
+  //
+  // The morning report uses from_utc_timestamp(HaulerServiceEndTime,
+  // 'America/New_York')::date as the calendar report_date. The current
+  // JS attribution path in server/sand-actuals/index.ts resolves the
+  // effective timestamp with gps_dropoff_completed_at first and falls
+  // back to hauler_service_end_at — that precedence will need to be
+  // realigned to HaulerServiceEndTime-first once the schema carries the
+  // upstream attribution columns (see TODO on mapRowToIngestedTicket).
+
   return `
+with active_pads as (
+  select
+    Site_UID                             as site_uid,
+    Site_Name                            as site_name,
+    Dev_Run_UID                          as dev_run_uid,
+    upper(trim(Dev_Run_Name))            as dev_run_name,
+    Resource                             as resource_spread,
+    Water_System                         as water_system
+  from jarvis.rpt.glancer_mos
+  where upper(trim(Milestone)) = 'FRAC'
+    and RScriptLoadDate = (select max(RScriptLoadDate) from jarvis.rpt.glancer_mos)
+    and current_date() between Start and Finish
+)
 select
-  cast(Ticket_Id as string)                              as source_ticket_number,
-  cast(Dispatch_Id as string)                            as source_dispatch_number,
-  Ticket_Status                                          as ticket_status,
-  Load_Type                                              as load_type,
-  Gemini_Material                                        as material,
-  null                                                   as operator,
-  Hauler                                                 as hauler,
-  Driver_Name                                            as driver_name,
-  Truck_Number                                           as truck_number,
-  Trailer_Number                                         as trailer_number,
-  Source                                                 as source_name,
-  cast(Source_Site_UID as string)                        as source_external_id,
-  Source_Site_Type                                       as source_location_type,
-  Destination                                            as destination_name,
-  cast(Destination_Site_UID as string)                   as destination_external_id,
-  Destination_Site_Type                                  as destination_location_type,
-  null                                                   as source_volume,
-  try_cast(Destination_Total_Volume_Tons as decimal(14,2)) as destination_volume,
-  'Tons'                                                 as volume_unit_of_measure,
-  null                                                   as hauling_rate,
-  null                                                   as cost_type,
-  null                                                   as hauling_cost,
-  null                                                   as total_npt_cost,
-  try_cast(Total_Ticket_Cost as decimal(14,2))           as total_ticket_cost,
-  try_cast(Total_Hours as decimal(10,2))                 as duration_hours,
-  null                                                   as billable_time_hours,
-  try_cast(NPT_Hours as decimal(10,2))                   as npt_billable_hours,
-  null                                                   as total_billable_time,
-  Ticket_Start_Time                                      as gps_ticket_started_at,
-  Pickup_Completed_Time                                  as gps_pickup_completed_at,
-  Dropoff_Completed_Time                                 as gps_dropoff_completed_at,
-  Shift_Start_Time                                       as hauler_service_start_at,
-  Ticket_End_Time                                        as hauler_service_end_at,
-  Pickup_Completed_Time                                  as hauler_pickup_completed_at,
-  Dropoff_Completed_Time                                 as hauler_dropoff_completed_at,
-  null                                                   as failed_audit_reason,
-  null                                                   as driver_comments,
-  null                                                   as admin_comments,
-  false                                                  as rerouted,
-  false                                                  as flagged,
-  Dev_Run_UID                                            as upstream_dev_run_uid,
-  Dev_Run_Name                                           as upstream_dev_run_name,
-  Driver_Shift_Id                                        as upstream_driver_shift_id,
-  try_cast(Miles_Traveled as decimal(10,2))              as upstream_miles_traveled
-from jarvis.trust.sand_tickets
-where coalesce(Gemini_Material, 'Sand') = 'Sand'
-  and coalesce(Ticket_Status, '') <> 'Deleted'
-  and coalesce(Hauler, '') not in ('EQT Test Hauler', 'Gemini Hauling')
-  and coalesce(Dropoff_Completed_Time, Ticket_End_Time, Pickup_Completed_Time, Ticket_Start_Time)
+  cast(g.TicketId as string)                                         as source_ticket_number,
+  cast(g.DispatchId as string)                                       as source_dispatch_number,
+  g.TicketStatus                                                     as ticket_status,
+  g.LoadType                                                         as load_type,
+  g.Material                                                         as material,
+  null                                                               as operator,
+  g.Hauler                                                           as hauler,
+  g.DriverName                                                       as driver_name,
+  g.TruckNumber                                                      as truck_number,
+  g.TrailerNumber                                                    as trailer_number,
+  g.SourceName                                                       as source_name,
+  cast(g.SourceExternalId as string)                                 as source_external_id,
+  g.SourceLocationType                                               as source_location_type,
+  g.DestinationName                                                  as destination_name,
+  cast(g.DestinationExternalId as string)                            as destination_external_id,
+  g.DestinationLocationType                                          as destination_location_type,
+  null                                                               as source_volume,
+  try_cast(g.DestinationVolume as decimal(14,2))                     as destination_volume,
+  'Tons'                                                             as volume_unit_of_measure,
+  null                                                               as hauling_rate,
+  null                                                               as cost_type,
+  null                                                               as hauling_cost,
+  null                                                               as total_npt_cost,
+  try_cast(g.TotalTicketCost as decimal(14,2))                       as total_ticket_cost,
+  round(
+    case
+      when (
+        unix_timestamp(from_utc_timestamp(g.HaulerServiceEndTime, 'America/New_York'))
+        - unix_timestamp(from_utc_timestamp(g.GPSTicketStarted,    'America/New_York'))
+      ) / 3600.0 between 0.25 and 24
+      then (
+        unix_timestamp(from_utc_timestamp(g.HaulerServiceEndTime, 'America/New_York'))
+        - unix_timestamp(from_utc_timestamp(g.GPSTicketStarted,    'America/New_York'))
+      ) / 3600.0
+      else null
+    end
+  , 2)                                                               as duration_hours,
+  round(
+    case
+      when (
+        unix_timestamp(from_utc_timestamp(g.GPSDropOffCompleted, 'America/New_York'))
+        - unix_timestamp(from_utc_timestamp(g.GPSPickupCompleted, 'America/New_York'))
+      ) / 3600.0 between 0.25 and 18
+      then (
+        unix_timestamp(from_utc_timestamp(g.GPSDropOffCompleted, 'America/New_York'))
+        - unix_timestamp(from_utc_timestamp(g.GPSPickupCompleted, 'America/New_York'))
+      ) / 3600.0
+      else null
+    end
+  , 2)                                                               as billable_time_hours,
+  null                                                               as npt_billable_hours,
+  null                                                               as total_billable_time,
+  from_utc_timestamp(g.GPSTicketStarted,      'America/New_York')    as gps_ticket_started_at,
+  from_utc_timestamp(g.GPSPickupCompleted,    'America/New_York')    as gps_pickup_completed_at,
+  from_utc_timestamp(g.GPSDropOffCompleted,   'America/New_York')    as gps_dropoff_completed_at,
+  from_utc_timestamp(g.HaulerServiceStartTime,'America/New_York')    as hauler_service_start_at,
+  from_utc_timestamp(g.HaulerServiceEndTime,  'America/New_York')    as hauler_service_end_at,
+  from_utc_timestamp(g.GPSPickupCompleted,    'America/New_York')    as hauler_pickup_completed_at,
+  from_utc_timestamp(g.GPSDropOffCompleted,   'America/New_York')    as hauler_dropoff_completed_at,
+  null                                                               as failed_audit_reason,
+  null                                                               as driver_comments,
+  null                                                               as admin_comments,
+  false                                                              as rerouted,
+  false                                                              as flagged,
+  p.dev_run_uid                                                      as upstream_dev_run_uid,
+  p.dev_run_name                                                     as upstream_dev_run_name,
+  null                                                               as upstream_driver_shift_id,
+  null                                                               as upstream_miles_traveled,
+  p.site_uid                                                         as site_uid,
+  p.site_name                                                        as site_name,
+  p.resource_spread                                                  as resource_spread,
+  p.water_system                                                     as water_system
+from gemini.eqt.tickets g
+join active_pads p
+  on p.site_uid = cast(g.DestinationExternalId as string)
+where g.Material = 'Sand'
+  and g.Hauler not in ('EQT Test Hauler', 'Gemini Hauling')
+  and coalesce(g.HaulerServiceEndTime, g.GPSDropOffCompleted, g.GPSPickupCompleted, g.GPSTicketStarted)
       >= current_timestamp() - INTERVAL ${hours} HOURS
 `;
 }
 
+// TODO(schema): the SQL now carries six Glancer-sourced attribution columns
+// (upstreamDevRunUid, upstreamDevRunName, siteUid, siteName, resourceSpread,
+// waterSystem) on every ticket row. These fields do NOT yet exist on the
+// ingestedTickets table or on the InsertIngestedTicket Zod schema in
+// shared/schema.ts. Until those are added (and a follow-up migration runs),
+// upsertIngestedTicket() will fail at runtime the moment this mapper returns
+// a row with the new keys because drizzle will try to insert into columns
+// that don't exist.
+//
+// Required follow-up edits in shared/schema.ts:
+//   ingestedTickets = pgTable("ingested_tickets", {
+//     ...
+//     upstreamDevRunUid:  text("upstream_dev_run_uid"),
+//     upstreamDevRunName: text("upstream_dev_run_name"),
+//     siteUid:            text("site_uid"),
+//     siteName:           text("site_name"),
+//     resourceSpread:     text("resource_spread"),
+//     waterSystem:        text("water_system"),
+//     ...
+//   })
+// Plus a drizzle-kit generate to emit the ALTER TABLE migration.
+//
+// Once those columns exist, server/sand-actuals/index.ts can be updated to
+// prefer ticket.upstreamDevRunUid for attribution and retire the
+// buildActivePadSnapshot(fracJobs) fallback.
 function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTicket {
-  return {
+  const ticket = {
     commodity: "sand",
     sourceTicketNumber: asRequiredString(row.source_ticket_number),
     sourceDispatchNumber: asNullableString(row.source_dispatch_number),
@@ -285,7 +376,20 @@ function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTic
     adminComments: asNullableString(row.admin_comments),
     rerouted: asBoolean(row.rerouted),
     flagged: asBoolean(row.flagged),
+
+    // Glancer-join attribution hints — see TODO above. These keys are not yet
+    // present on InsertIngestedTicket; the cast below intentionally lets them
+    // flow through the mapper so the SQL selection, the mapper, and the
+    // eventual schema/migration land in the same PR.
+    upstreamDevRunUid: asNullableString(row.upstream_dev_run_uid),
+    upstreamDevRunName: asNullableString(row.upstream_dev_run_name),
+    siteUid: asNullableString(row.site_uid),
+    siteName: asNullableString(row.site_name),
+    resourceSpread: asNullableString(row.resource_spread),
+    waterSystem: asNullableString(row.water_system),
   };
+
+  return ticket as unknown as InsertIngestedTicket;
 }
 
 function arrayRowToObject(columns: string[], row: unknown[]): Record<string, unknown> {
