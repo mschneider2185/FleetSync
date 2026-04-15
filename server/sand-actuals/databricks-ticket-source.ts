@@ -308,33 +308,15 @@ where g.Material = 'Sand'
 `;
 }
 
-// TODO(schema): the SQL now carries six Glancer-sourced attribution columns
-// (upstreamDevRunUid, upstreamDevRunName, siteUid, siteName, resourceSpread,
-// waterSystem) on every ticket row. These fields do NOT yet exist on the
-// ingestedTickets table or on the InsertIngestedTicket Zod schema in
-// shared/schema.ts. Until those are added (and a follow-up migration runs),
-// upsertIngestedTicket() will fail at runtime the moment this mapper returns
-// a row with the new keys because drizzle will try to insert into columns
-// that don't exist.
-//
-// Required follow-up edits in shared/schema.ts:
-//   ingestedTickets = pgTable("ingested_tickets", {
-//     ...
-//     upstreamDevRunUid:  text("upstream_dev_run_uid"),
-//     upstreamDevRunName: text("upstream_dev_run_name"),
-//     siteUid:            text("site_uid"),
-//     siteName:           text("site_name"),
-//     resourceSpread:     text("resource_spread"),
-//     waterSystem:        text("water_system"),
-//     ...
-//   })
-// Plus a drizzle-kit generate to emit the ALTER TABLE migration.
-//
-// Once those columns exist, server/sand-actuals/index.ts can be updated to
-// prefer ticket.upstreamDevRunUid for attribution and retire the
-// buildActivePadSnapshot(fracJobs) fallback.
+// The six Glancer-sourced attribution columns (upstreamDevRunUid,
+// upstreamDevRunName, siteUid, siteName, resourceSpread, waterSystem) now
+// exist on ingested_tickets — added in migration
+// 0001_ingested_tickets_glancer_attribution.sql. A follow-up can teach
+// server/sand-actuals/index.ts to prefer ticket.upstreamDevRunUid for
+// attribution and retire the buildActivePadSnapshot(fracJobs) fallback
+// against fracJobs pad names.
 function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTicket {
-  const ticket = {
+  return {
     commodity: "sand",
     sourceTicketNumber: asRequiredString(row.source_ticket_number),
     sourceDispatchNumber: asNullableString(row.source_dispatch_number),
@@ -377,10 +359,7 @@ function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTic
     rerouted: asBoolean(row.rerouted),
     flagged: asBoolean(row.flagged),
 
-    // Glancer-join attribution hints — see TODO above. These keys are not yet
-    // present on InsertIngestedTicket; the cast below intentionally lets them
-    // flow through the mapper so the SQL selection, the mapper, and the
-    // eventual schema/migration land in the same PR.
+    // Glancer-join attribution hints carried on every row.
     upstreamDevRunUid: asNullableString(row.upstream_dev_run_uid),
     upstreamDevRunName: asNullableString(row.upstream_dev_run_name),
     siteUid: asNullableString(row.site_uid),
@@ -388,8 +367,6 @@ function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTic
     resourceSpread: asNullableString(row.resource_spread),
     waterSystem: asNullableString(row.water_system),
   };
-
-  return ticket as unknown as InsertIngestedTicket;
 }
 
 function arrayRowToObject(columns: string[], row: unknown[]): Record<string, unknown> {

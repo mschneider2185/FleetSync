@@ -255,6 +255,13 @@ export const ingestedTickets = pgTable(
     normalizedTruckNumber: text("normalized_truck_number"),
     normalizedDriverName: text("normalized_driver_name"),
 
+    upstreamDevRunUid: text("upstream_dev_run_uid"),
+    upstreamDevRunName: text("upstream_dev_run_name"),
+    siteUid: text("site_uid"),
+    siteName: text("site_name"),
+    resourceSpread: text("resource_spread"),
+    waterSystem: text("water_system"),
+
     rawPayload: jsonb("raw_payload"),
     syncedAt: timestamp("synced_at").defaultNow(),
     lastSeenAt: timestamp("last_seen_at").defaultNow(),
