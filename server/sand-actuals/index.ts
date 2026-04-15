@@ -214,16 +214,19 @@ interface EffectiveTimestampResult {
 }
 
 export function resolveEffectiveTimestamp(ticket: IngestedTicket): EffectiveTimestampResult | null {
-  // Precedence order locked in Slice 1:
-  //   1. gps_dropoff_completed_at  (ground truth — GPS confirmed unload)
-  //   2. hauler_dropoff_completed_at (hauler-reported unload)
-  //   3. hauler_service_end_at       (end of billed service window)
-  //   4. gps_pickup_completed_at     (fallback — at least we know it ran)
+  // Precedence aligned with the morning report, which derives the calendar
+  // report date from HaulerServiceEndTime. Falling back through the GPS
+  // timestamps keeps tickets attributable even when the hauler service end
+  // is missing.
+  //   1. hauler_service_end_at       (morning report's report_date source)
+  //   2. gps_dropoff_completed_at    (ground truth — GPS confirmed unload)
+  //   3. gps_pickup_completed_at     (at least we know the load ran)
+  //   4. gps_ticket_started_at       (last resort — ticket opened)
   const candidates: Array<[string, Date | null | undefined]> = [
-    ["gps_dropoff_completed_at", ticket.gpsDropoffCompletedAt ?? null],
-    ["hauler_dropoff_completed_at", ticket.haulerDropoffCompletedAt ?? null],
     ["hauler_service_end_at", ticket.haulerServiceEndAt ?? null],
+    ["gps_dropoff_completed_at", ticket.gpsDropoffCompletedAt ?? null],
     ["gps_pickup_completed_at", ticket.gpsPickupCompletedAt ?? null],
+    ["gps_ticket_started_at", ticket.gpsTicketStartedAt ?? null],
   ];
 
   for (const [field, value] of candidates) {

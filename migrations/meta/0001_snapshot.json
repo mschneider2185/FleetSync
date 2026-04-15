@@ -1,0 +1,1867 @@
+{
+  "id": "0d70193b-d6fe-450e-9891-043acff7b9b7",
+  "prevId": "37e680b6-69b3-4813-9661-c20ce39fc864",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.allocation_blocks": {
+      "name": "allocation_blocks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scenario_id": {
+          "name": "scenario_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frac_job_id": {
+          "name": "frac_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hauler_id": {
+          "name": "hauler_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trucks_per_shift": {
+          "name": "trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift": {
+          "name": "shift",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'both'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fact_frac_day_actuals": {
+      "name": "fact_frac_day_actuals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sync_run_id": {
+          "name": "sync_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dev_run_uid": {
+          "name": "dev_run_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dev_run_name": {
+          "name": "dev_run_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frac_job_id": {
+          "name": "frac_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_uid": {
+          "name": "site_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_name": {
+          "name": "site_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_spread": {
+          "name": "resource_spread",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "water_system": {
+          "name": "water_system",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "calendar_report_date": {
+          "name": "calendar_report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operational_day_date": {
+          "name": "operational_day_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivered_load_count": {
+          "name": "delivered_load_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "delivered_tons": {
+          "name": "delivered_tons",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "delivered_total_cost": {
+          "name": "delivered_total_cost",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "avg_field_cycle_hours": {
+          "name": "avg_field_cycle_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_ticket_cycle_hours": {
+          "name": "avg_ticket_cycle_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "participating_truck_count": {
+          "name": "participating_truck_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active_driver_count": {
+          "name": "active_driver_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "day_load_count": {
+          "name": "day_load_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "night_load_count": {
+          "name": "night_load_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "core_truck_count_2plus": {
+          "name": "core_truck_count_2plus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "core_truck_count_3plus": {
+          "name": "core_truck_count_3plus",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "stage_count_actual": {
+          "name": "stage_count_actual",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pump_time_hours": {
+          "name": "pump_time_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ops_npt_hours": {
+          "name": "ops_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_proppant_lb_actual": {
+          "name": "total_proppant_lb_actual",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "daily_req_tons": {
+          "name": "daily_req_tons",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ton_delta": {
+          "name": "ton_delta",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_npt_hours": {
+          "name": "total_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sand_npt_hours": {
+          "name": "sand_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "water_npt_hours": {
+          "name": "water_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weather_npt_hours": {
+          "name": "weather_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pump_npt_hours": {
+          "name": "pump_npt_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d1_cat": {
+          "name": "npt_d1_cat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d1_reason": {
+          "name": "npt_d1_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d1_hours": {
+          "name": "npt_d1_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d2_cat": {
+          "name": "npt_d2_cat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d2_reason": {
+          "name": "npt_d2_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_d2_hours": {
+          "name": "npt_d2_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tons_per_stage": {
+          "name": "tons_per_stage",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_per_stage": {
+          "name": "cost_per_stage",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_per_ton": {
+          "name": "cost_per_ton",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attribution_method": {
+          "name": "attribution_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refreshed_at": {
+          "name": "refreshed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fact_frac_day_actuals_unique_grain": {
+          "name": "fact_frac_day_actuals_unique_grain",
+          "columns": [
+            {
+              "expression": "dev_run_uid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "calendar_report_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "operational_day_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attribution_method",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fact_frac_day_actuals_calendar_date_idx": {
+          "name": "fact_frac_day_actuals_calendar_date_idx",
+          "columns": [
+            {
+              "expression": "calendar_report_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fact_frac_day_actuals_operational_date_idx": {
+          "name": "fact_frac_day_actuals_operational_date_idx",
+          "columns": [
+            {
+              "expression": "operational_day_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.frac_daily_events": {
+      "name": "frac_daily_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scenario_id": {
+          "name": "scenario_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frac_job_id": {
+          "name": "frac_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift": {
+          "name": "shift",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'both'"
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sub_category": {
+          "name": "sub_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hours_lost": {
+          "name": "hours_lost",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.frac_jobs": {
+      "name": "frac_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pad_name": {
+          "name": "pad_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lane_id": {
+          "name": "lane_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customer": {
+          "name": "customer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "basin": {
+          "name": "basin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stages_per_day": {
+          "name": "stages_per_day",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tons_per_stage": {
+          "name": "tons_per_stage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_stages": {
+          "name": "total_stages",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "travel_time_hours": {
+          "name": "travel_time_hours",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_tons_per_load": {
+          "name": "avg_tons_per_load",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "load_unload_time_hours": {
+          "name": "load_unload_time_hours",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_type": {
+          "name": "storage_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_capacity": {
+          "name": "storage_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hauler_capacity_exceptions": {
+      "name": "hauler_capacity_exceptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "hauler_id": {
+          "name": "hauler_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_trucks_per_shift": {
+          "name": "max_trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "min_committed_trucks_per_shift": {
+          "name": "min_committed_trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.haulers": {
+      "name": "haulers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "split_allowed": {
+          "name": "split_allowed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "home_area": {
+          "name": "home_area",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_max_trucks_per_shift": {
+          "name": "default_max_trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "default_min_committed_trucks_per_shift": {
+          "name": "default_min_committed_trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ingested_tickets": {
+      "name": "ingested_tickets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "commodity": {
+          "name": "commodity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'sand'"
+        },
+        "source_ticket_number": {
+          "name": "source_ticket_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_dispatch_number": {
+          "name": "source_dispatch_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ticket_id_raw": {
+          "name": "ticket_id_raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ticket_status": {
+          "name": "ticket_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "material": {
+          "name": "material",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "load_type": {
+          "name": "load_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operator": {
+          "name": "operator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauler": {
+          "name": "hauler",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "driver_name": {
+          "name": "driver_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "driver_first_name": {
+          "name": "driver_first_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "driver_last_name": {
+          "name": "driver_last_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "truck_number": {
+          "name": "truck_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trailer_number": {
+          "name": "trailer_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_name": {
+          "name": "source_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_external_id": {
+          "name": "source_external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_location_type": {
+          "name": "source_location_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_name": {
+          "name": "destination_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_external_id": {
+          "name": "destination_external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_location_type": {
+          "name": "destination_location_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_volume": {
+          "name": "source_volume",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_volume": {
+          "name": "destination_volume",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_unit_of_measure": {
+          "name": "volume_unit_of_measure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauling_rate": {
+          "name": "hauling_rate",
+          "type": "numeric(14, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_type": {
+          "name": "cost_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauling_cost": {
+          "name": "hauling_cost",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_npt_cost": {
+          "name": "total_npt_cost",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_ticket_cost": {
+          "name": "total_ticket_cost",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_hours": {
+          "name": "duration_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "billable_time_hours": {
+          "name": "billable_time_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "npt_billable_hours": {
+          "name": "npt_billable_hours",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_billable_time": {
+          "name": "total_billable_time",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gps_ticket_started_at": {
+          "name": "gps_ticket_started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gps_pickup_completed_at": {
+          "name": "gps_pickup_completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gps_dropoff_completed_at": {
+          "name": "gps_dropoff_completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauler_service_start_at": {
+          "name": "hauler_service_start_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauler_service_end_at": {
+          "name": "hauler_service_end_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauler_pickup_completed_at": {
+          "name": "hauler_pickup_completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hauler_dropoff_completed_at": {
+          "name": "hauler_dropoff_completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_audit_reason": {
+          "name": "failed_audit_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "driver_comments": {
+          "name": "driver_comments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admin_comments": {
+          "name": "admin_comments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rerouted": {
+          "name": "rerouted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "flagged": {
+          "name": "flagged",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "normalized_hauler": {
+          "name": "normalized_hauler",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "normalized_truck_number": {
+          "name": "normalized_truck_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "normalized_driver_name": {
+          "name": "normalized_driver_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upstream_dev_run_uid": {
+          "name": "upstream_dev_run_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upstream_dev_run_name": {
+          "name": "upstream_dev_run_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_uid": {
+          "name": "site_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_name": {
+          "name": "site_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_spread": {
+          "name": "resource_spread",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "water_system": {
+          "name": "water_system",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_payload": {
+          "name": "raw_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_at": {
+          "name": "synced_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ingested_tickets_ticket_unique": {
+          "name": "ingested_tickets_ticket_unique",
+          "columns": [
+            {
+              "expression": "source_ticket_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingested_tickets_commodity_idx": {
+          "name": "ingested_tickets_commodity_idx",
+          "columns": [
+            {
+              "expression": "commodity",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingested_tickets_status_idx": {
+          "name": "ingested_tickets_status_idx",
+          "columns": [
+            {
+              "expression": "ticket_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingested_tickets_destination_external_id_idx": {
+          "name": "ingested_tickets_destination_external_id_idx",
+          "columns": [
+            {
+              "expression": "destination_external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingested_tickets_gps_dropoff_idx": {
+          "name": "ingested_tickets_gps_dropoff_idx",
+          "columns": [
+            {
+              "expression": "gps_dropoff_completed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ingested_tickets_hauler_service_end_idx": {
+          "name": "ingested_tickets_hauler_service_end_idx",
+          "columns": [
+            {
+              "expression": "hauler_service_end_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lanes": {
+      "name": "lanes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#3b82f6'"
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.presets": {
+      "name": "presets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "preset_type": {
+          "name": "preset_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_system": {
+          "name": "is_system",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scenario_frac_schedules": {
+      "name": "scenario_frac_schedules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scenario_id": {
+          "name": "scenario_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frac_job_id": {
+          "name": "frac_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planned_start_date": {
+          "name": "planned_start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planned_end_date": {
+          "name": "planned_end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transition_days_after": {
+          "name": "transition_days_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "required_trucks_per_shift": {
+          "name": "required_trucks_per_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "truck_requirement_overrides": {
+          "name": "truck_requirement_overrides",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'planned'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.scenarios": {
+      "name": "scenarios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_scenario_id": {
+          "name": "parent_scenario_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locked": {
+          "name": "locked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sync_runs": {
+      "name": "sync_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'sand_tickets'"
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rows_read": {
+          "name": "rows_read",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rows_written": {
+          "name": "rows_written",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rows_updated": {
+          "name": "rows_updated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rows_skipped": {
+          "name": "rows_skipped",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_payload": {
+          "name": "request_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "triggered_by_user_id": {
+          "name": "triggered_by_user_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "sync_runs_source_idx": {
+          "name": "sync_runs_source_idx",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sync_runs_status_idx": {
+          "name": "sync_runs_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ticket_attributions": {
+      "name": "ticket_attributions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ingested_ticket_id": {
+          "name": "ingested_ticket_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sync_run_id": {
+          "name": "sync_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attribution_method": {
+          "name": "attribution_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attribution_status": {
+          "name": "attribution_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'attributed'"
+        },
+        "exclusion_reason": {
+          "name": "exclusion_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "precedence_field_used": {
+          "name": "precedence_field_used",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_event_at_local": {
+          "name": "effective_event_at_local",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_event_at_utc": {
+          "name": "effective_event_at_utc",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "calendar_report_date": {
+          "name": "calendar_report_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operational_day_date": {
+          "name": "operational_day_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day_part": {
+          "name": "day_part",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hour_local": {
+          "name": "hour_local",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dev_run_uid": {
+          "name": "dev_run_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dev_run_name": {
+          "name": "dev_run_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frac_job_id": {
+          "name": "frac_job_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_uid": {
+          "name": "site_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "site_name": {
+          "name": "site_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resource_spread": {
+          "name": "resource_spread",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "water_system": {
+          "name": "water_system",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attribution_confidence": {
+          "name": "attribution_confidence",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'1.00'"
+        },
+        "active_pad_snapshot_loaded_at": {
+          "name": "active_pad_snapshot_loaded_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ticket_attributions_ticket_idx": {
+          "name": "ticket_attributions_ticket_idx",
+          "columns": [
+            {
+              "expression": "ingested_ticket_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ticket_attributions_dev_run_date_idx": {
+          "name": "ticket_attributions_dev_run_date_idx",
+          "columns": [
+            {
+              "expression": "dev_run_uid",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "calendar_report_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ticket_attributions_operational_date_idx": {
+          "name": "ticket_attributions_operational_date_idx",
+          "columns": [
+            {
+              "expression": "operational_day_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "sid": {
+          "name": "sid",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sess": {
+          "name": "sess",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expire": {
+          "name": "expire",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "IDX_session_expire": {
+          "name": "IDX_session_expire",
+          "columns": [
+            {
+              "expression": "expire",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_name": {
+          "name": "first_name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profile_image_url": {
+          "name": "profile_image_url",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
