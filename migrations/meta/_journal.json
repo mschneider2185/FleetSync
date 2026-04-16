@@ -15,6 +15,13 @@
       "when": 1776283852521,
       "tag": "0001_ingested_tickets_glancer_attribution",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776299665769,
+      "tag": "0002_backfill_normalized_ticket_fields",
+      "breakpoints": true
     }
   ]
 }
