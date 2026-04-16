@@ -232,15 +232,16 @@ function buildSandTicketsSql(lookbackHours: number): string {
 with active_pads as (
   select
     Site_UID                             as site_uid,
-    Site_Name                            as site_name,
-    Dev_Run_UID                          as dev_run_uid,
-    upper(trim(Dev_Run_Name))            as dev_run_name,
-    Resource                             as resource_spread,
-    Water_System                         as water_system
+    max(Site_Name)                       as site_name,
+    max(Dev_Run_UID)                     as dev_run_uid,
+    upper(trim(max(Dev_Run_Name)))       as dev_run_name,
+    max(Resource)                        as resource_spread,
+    max(Water_System)                    as water_system
   from jarvis.rpt.glancer_mos
   where upper(trim(Milestone)) = 'FRAC'
     and RScriptLoadDate = (select max(RScriptLoadDate) from jarvis.rpt.glancer_mos)
     and current_date() between Start and Finish
+  group by Site_UID
 )
 select
   cast(g.TicketId as string)                                         as source_ticket_number,
