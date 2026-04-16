@@ -45,7 +45,7 @@ export async function runSandTicketSync(
   const {
     storage,
     userId,
-    lookbackHours = 48,
+    lookbackHours = 168,
     rebuildFacts = true,
     rebuildFrom = null,
     rebuildTo = null,
