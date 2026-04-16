@@ -237,7 +237,7 @@ select
   g.DriverName                                                       as driver_name,
   g.TruckNumber                                                      as truck_number,
   g.TrailerNumber                                                    as trailer_number,
-  g.SourceName                                                       as source_name,
+  g.Source                                                           as source_name,
   cast(g.SourceExternalId as string)                                 as source_external_id,
   g.EQTSourceSiteType                                                as source_location_type,
   g.DestinationName                                                  as destination_name,
