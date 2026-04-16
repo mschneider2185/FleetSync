@@ -240,7 +240,7 @@ select
   g.Source                                                           as source_name,
   cast(g.SourceExternalId as string)                                 as source_external_id,
   g.EQTSourceSiteType                                                as source_location_type,
-  g.DestinationName                                                  as destination_name,
+  g.Destination                                                      as destination_name,
   cast(g.DestinationExternalId as string)                            as destination_external_id,
   g.EQTDestinationType                                               as destination_location_type,
   null                                                               as source_volume,
