@@ -20,6 +20,9 @@ type DatabricksStatementResponse = {
     schema?: {
       columns?: DatabricksColumn[];
     };
+    total_row_count?: number;
+    total_chunk_count?: number;
+    truncated?: boolean;
   };
   result?: {
     data_array?: unknown[][];
@@ -53,6 +56,15 @@ export class DatabricksTicketSource implements TicketSource {
     const completed = await this.pollUntilComplete(initial);
 
     const rows = await this.collectRows(completed);
+
+    console.log(
+      `[sand-actuals] Databricks returned ${rows.length} rows` +
+        (completed.manifest?.total_row_count != null
+          ? ` (manifest total_row_count: ${completed.manifest.total_row_count})`
+          : "") +
+        (completed.manifest?.truncated ? " [TRUNCATED]" : ""),
+    );
+
     const tickets = rows.map(mapRowToIngestedTicket);
 
     const lastSeenAt =
@@ -115,8 +127,11 @@ export class DatabricksTicketSource implements TicketSource {
       }
 
       if (state === "FAILED" || state === "CANCELED" || state === "CLOSED") {
+        const rowInfo = current.manifest?.total_row_count != null
+          ? ` (total_row_count: ${current.manifest.total_row_count})`
+          : "";
         throw new Error(
-          `Databricks statement ${state}: ${current.status?.error?.message ?? "unknown error"}`,
+          `Databricks statement ${state}${rowInfo}: ${current.status?.error?.message ?? "unknown error"}`,
         );
       }
 
@@ -181,6 +196,7 @@ export class DatabricksTicketSource implements TicketSource {
       next = chunk.result?.next_chunk_internal_link ?? null;
     }
 
+    console.log(`[sand-actuals] Collected ${rows.length} rows across chunks`);
     return rows;
   }
 }

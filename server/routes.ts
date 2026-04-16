@@ -305,7 +305,7 @@ export async function registerRoutes(
       const result = await runSandTicketSync({
         storage,
         userId: req.user?.claims?.sub ?? null,
-        lookbackHours: Number(req.body?.lookbackHours ?? 48),
+        lookbackHours: Number(req.body?.lookbackHours ?? 168),
         rebuildFacts: req.body?.rebuildFacts !== false,
         rebuildFrom: typeof req.body?.rebuildFrom === "string" ? req.body.rebuildFrom : null,
         rebuildTo: typeof req.body?.rebuildTo === "string" ? req.body.rebuildTo : null,
