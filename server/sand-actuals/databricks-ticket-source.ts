@@ -1,4 +1,5 @@
 import type { InsertIngestedTicket } from "@shared/schema";
+import { normalizeKey } from "./index";
 import type {
   TicketSource,
   TicketSourceFetchOptions,
@@ -359,6 +360,13 @@ function mapRowToIngestedTicket(row: Record<string, unknown>): InsertIngestedTic
     rerouted: asBoolean(row.rerouted),
     flagged: asBoolean(row.flagged),
 
+    // Normalized identifiers — used by rebuild-facts.sql for COUNT(DISTINCT …)
+    // on participating trucks, active drivers, and core-truck thresholds.
+    // Without these the board shows zeros for every truck/driver metric.
+    normalizedHauler: asNormalizedNullableString(row.hauler),
+    normalizedTruckNumber: asNormalizedNullableString(row.truck_number),
+    normalizedDriverName: asNormalizedNullableString(row.driver_name),
+
     // Glancer-join attribution hints carried on every row.
     upstreamDevRunUid: asNullableString(row.upstream_dev_run_uid),
     upstreamDevRunName: asNullableString(row.upstream_dev_run_name),
@@ -390,6 +398,11 @@ function asRequiredString(value: unknown): string {
     throw new Error("Missing required ticket identifier");
   }
   return String(value);
+}
+
+function asNormalizedNullableString(value: unknown): string | null {
+  const s = asNullableString(value);
+  return s === null ? null : normalizeKey(s);
 }
 
 function asNullableString(value: unknown): string | null {
